@@ -1,16 +1,45 @@
+# Build files
 /build
-/Correagro (Bogota).spec
 /dist
-/ProcesadorFacturas.spec
-/procesamiento_facturas_20251006_110705.log
-/procesamiento_facturas_20251006_110824.log
-/procesamiento_facturas_20251006_111354.log
-/procesamiento_facturas_20251006_111541.log
-/procesamiento_facturas_20251006_111630.log
-/procesamiento_facturas_20251006_111957.log
-/procesamiento_facturas_20251006_112016.log
-/procesamiento_facturas_20251006_112043.log
-/procesamiento_facturas_20251006_112351.log
-/procesamiento_facturas_20251006_112902.log
-/procesamiento_facturas_20251006_112920.log
-/procesamiento_facturas_20251104_160129.log
+*.spec
+
+# Logs
+*.log
+procesamiento_facturas_*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Excel files
+Plantilla_REGGIS.xlsx
+*.xlsx
+*.xls
+
+# Resultados
+Resultados_*/
+backup/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary
+*.tmp
+*.bak
+temp/

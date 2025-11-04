@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "last_updated": "2025-11-04T00:00:00",
+  "features": [
+    "Interfaz PyQt6 profesional",
+    "Sistema de actualizaci\u00f3n autom\u00e1tica",
+    "Soporte para SEABOARD",
+    "Soporte para Casa del Agricultor",
+    "Soporte para Lactalis"
+  ]
+}
