@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from ..config.constants import CURRENCY_CODE_MAP, UNIT_MAP
+from config.constants import CURRENCY_CODE_MAP, UNIT_MAP
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 import logging
 from typing import Dict, List
 
-from ..config.constants import NAMESPACES, CURRENCY_CODE_MAP
+from config.constants import NAMESPACES, CURRENCY_CODE_MAP
 
 logger = logging.getLogger(__name__)
 

@@ -8,8 +8,8 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..config.constants import NAMESPACES
-from ..extractors.seaboard_extractor import FacturaExtractorSeaboard
+from config.constants import NAMESPACES
+from extractors.seaboard_extractor import FacturaExtractorSeaboard
 
 logger = logging.getLogger(__name__)
 

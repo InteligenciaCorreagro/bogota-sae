@@ -11,10 +11,10 @@ from tkinter import Tk, filedialog, messagebox, ttk
 import tkinter as tk
 from pathlib import Path
 
-from ..config.constants import REGGIS_HEADERS
-from ..utils.sharepoint_detector import DetectorSharePoint
-from ..processors.seaboard_processor import ProcesadorSeaboard
-from ..processors.casa_del_agricultor_processor import ProcesadorCasaDelAgricultor
+from config.constants import REGGIS_HEADERS
+from utils.sharepoint_detector import DetectorSharePoint
+from processors.seaboard_processor import ProcesadorSeaboard
+from processors.casa_del_agricultor_processor import ProcesadorCasaDelAgricultor
 
 logger = logging.getLogger(__name__)
 

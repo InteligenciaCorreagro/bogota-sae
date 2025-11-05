@@ -35,6 +35,7 @@ bogota-sae/
 │   ├── main.py                            # Punto de entrada de la aplicación
 │   └── __init__.py
 │
+├── run.py                                 # Script de ejecución (recomendado)
 ├── unified_invoice_processor.py           # Archivo original (obsoleto)
 ├── .gitignore
 └── README.md
@@ -75,12 +76,20 @@ bogota-sae/
 
 ### Ejecutar la aplicación
 
+**Opción 1 (Recomendada)**: Desde la raíz del proyecto:
+
+```bash
+python run.py
+```
+
+**Opción 2**: Desde el directorio `src`:
+
 ```bash
 cd src
 python main.py
 ```
 
-O desde la raíz del proyecto:
+**Opción 3**: Como módulo desde la raíz:
 
 ```bash
 python -m src.main

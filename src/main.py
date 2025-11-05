@@ -6,6 +6,14 @@ Autor: Sistema REGGIS
 Punto de entrada principal de la aplicación
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Agregar el directorio src al path de Python
+src_path = Path(__file__).parent
+sys.path.insert(0, str(src_path))
+
 import logging
 from tkinter import messagebox
 
