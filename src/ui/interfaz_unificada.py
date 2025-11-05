@@ -1,5 +1,5 @@
 """
-Interfaz que gestiona ambos clientes con botón Volver
+Interfaz que gestiona todos los clientes con botón Volver (PyQt6)
 """
 
 import os
@@ -7,9 +7,13 @@ import platform
 import logging
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from tkinter import Tk, filedialog, messagebox, ttk
-import tkinter as tk
 from pathlib import Path
+
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                              QLabel, QPushButton, QProgressBar, QFileDialog,
+                              QMessageBox, QListWidget, QDialog)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QFont
 
 from config.constants import REGGIS_HEADERS
 from utils.sharepoint_detector import DetectorSharePoint
@@ -19,50 +23,48 @@ from processors.casa_del_agricultor_processor import ProcesadorCasaDelAgricultor
 logger = logging.getLogger(__name__)
 
 
-class InterfazUnificada:
-    """Interfaz que gestiona ambos clientes con botón Volver"""
+class ProcesamientoThread(QThread):
+    """Thread para ejecutar procesamiento en segundo plano"""
+    finished = pyqtSignal(bool, str, object)  # success, message, result
 
-    def __init__(self, cliente: str):
+    def __init__(self, procesador_func, *args):
+        super().__init__()
+        self.procesador_func = procesador_func
+        self.args = args
+
+    def run(self):
+        try:
+            result = self.procesador_func(*self.args)
+            self.finished.emit(True, "Proceso completado exitosamente", result)
+        except Exception as e:
+            self.finished.emit(False, f"Error: {str(e)}", None)
+
+
+class InterfazUnificada(QMainWindow):
+    """Interfaz que gestiona todos los clientes con botón Volver"""
+
+    def __init__(self, cliente: str, app):
+        super().__init__()
         self.cliente = cliente
-        self.root = Tk()
-        self.root.title(f"Procesador de Facturas - {cliente}")
-        self.root.resizable(True, True)
-
+        self.app = app
         self.carpeta_entrada = None
         self.carpetas_sharepoint = []
         self.request_return = False
+        self.procesamiento_thread = None
 
         if cliente == "SEABOARD":
             self.detectar_sharepoint()
 
         self.setup_ui()
-        self.centrar_ventana_por_cliente()
+        self.centrar_ventana()
 
-    def centrar_ventana_por_cliente(self):
-        """Centra la ventana usando el tamaño requerido por los widgets"""
-        self.root.update_idletasks()
-        req_w = self.root.winfo_reqwidth()
-        req_h = self.root.winfo_reqheight()
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-
-        cliente_min_map = {
-            "SEABOARD": (820, 620),
-            "CASA_DEL_AGRICULTOR": (760, 560)
-        }
-        default_min = (720, 520)
-        min_w, min_h = cliente_min_map.get(self.cliente, default_min)
-
-        width = max(req_w, min_w)
-        height = max(req_h, min_h)
-
-        width = min(width, screen_w - 120)
-        height = min(height, screen_h - 120)
-
-        self.root.minsize(width, height)
-        x = (screen_w // 2) - (width // 2)
-        y = (screen_h // 2) - (height // 2)
-        self.root.geometry(f'{width}x{height}+{x}+{y}')
+    def centrar_ventana(self):
+        """Centra la ventana en la pantalla"""
+        screen = self.app.primaryScreen().geometry()
+        window_geo = self.frameGeometry()
+        center_point = screen.center()
+        window_geo.moveCenter(center_point)
+        self.move(window_geo.topLeft())
 
     def detectar_sharepoint(self):
         """Detecta carpetas de SharePoint sincronizadas"""
@@ -76,250 +78,337 @@ class InterfazUnificada:
 
     def setup_ui(self):
         """Configura la interfaz de usuario"""
-        main_frame = ttk.Frame(self.root, padding=(18, 14))
-        main_frame.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        main_frame.columnconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
+        self.setWindowTitle(f"Procesador de Facturas - {self.cliente}")
+        self.setMinimumSize(900, 600)
 
-        # Barra superior con botón Volver
-        top_bar = ttk.Frame(main_frame)
-        top_bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        top_bar.columnconfigure(0, weight=0)
-        top_bar.columnconfigure(1, weight=1)
+        # Widget central
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
 
-        btn_volver = ttk.Button(top_bar, text="← Volver", command=self.volver_al_selector)
-        btn_volver.grid(row=0, column=0, sticky="w")
+        # Layout principal
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+        central_widget.setLayout(main_layout)
 
-        titulo = ttk.Label(
-            main_frame,
-            text=f"PROCESADOR - {self.cliente}",
-            font=("Arial", 18, "bold"),
-            anchor="center",
-            wraplength=680
-        )
-        titulo.grid(row=1, column=0, columnspan=2, pady=(4, 10), sticky="ew")
+        # Botón Volver
+        btn_volver = QPushButton("← Volver")
+        btn_volver.setMaximumWidth(100)
+        btn_volver.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+        """)
+        btn_volver.clicked.connect(self.volver_al_selector)
+        main_layout.addWidget(btn_volver, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        ttk.Separator(main_frame, orient='horizontal').grid(
-            row=2, column=0, columnspan=2, sticky='ew', pady=(0, 12)
-        )
+        # Título
+        titulo = QLabel(f"PROCESADOR - {self.cliente}")
+        titulo.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        titulo.setStyleSheet("color: #2c3e50; padding: 10px;")
+        main_layout.addWidget(titulo)
 
-        botones_frame = ttk.Frame(main_frame)
-        botones_frame.grid(row=3, column=0, columnspan=2, pady=(0, 12), sticky="ew")
-        botones_frame.columnconfigure(0, weight=1)
-
+        # Layout de botones según cliente
         if self.cliente == "SEABOARD":
-            self.setup_botones_seaboard(botones_frame)
-        else:
-            self.setup_botones_casa(botones_frame)
+            self.setup_botones_seaboard(main_layout)
+        elif self.cliente == "CASA_DEL_AGRICULTOR":
+            self.setup_botones_casa(main_layout)
+        elif self.cliente == "LACTALIS_COMPRAS":
+            self.setup_botones_lactalis(main_layout)
 
         # Barra de progreso
-        self.progress = ttk.Progressbar(
-            main_frame,
-            orient='horizontal',
-            mode='indeterminate'
-        )
-        self.progress.grid(row=4, column=0, columnspan=2, pady=(8, 8), sticky="ew")
+        self.progress = QProgressBar()
+        self.progress.setMinimum(0)
+        self.progress.setMaximum(0)  # Modo indeterminado
+        self.progress.setVisible(False)
+        self.progress.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #bdc3c7;
+                border-radius: 5px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #3498db;
+            }
+        """)
+        main_layout.addWidget(self.progress)
 
         # Label de estado
-        self.estado_label = ttk.Label(
-            main_frame,
-            text="",
-            font=("Arial", 10),
-            wraplength=680,
-            anchor="w",
-            justify="left"
-        )
-        self.estado_label.grid(row=5, column=0, columnspan=2, pady=(2, 6), sticky="ew")
+        self.estado_label = QLabel("")
+        self.estado_label.setFont(QFont("Arial", 10))
+        self.estado_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.estado_label.setStyleSheet("padding: 10px;")
+        main_layout.addWidget(self.estado_label)
 
-        # Espacio inferior
-        bottom_frame = ttk.Frame(main_frame)
-        bottom_frame.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 4))
-        bottom_frame.columnconfigure(0, weight=1)
-        bottom_frame.columnconfigure(1, weight=0)
+        # Espaciador
+        main_layout.addStretch()
 
-        self.lbl_resultados = ttk.Label(bottom_frame, text="", font=("Arial", 9), foreground="gray")
-        self.lbl_resultados.grid(row=0, column=0, sticky="w")
+        # Botón Cerrar
+        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar.setMaximumWidth(100)
+        btn_cerrar.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        btn_cerrar.clicked.connect(self.close)
 
-        btn_cerrar = ttk.Button(bottom_frame, text="Cerrar", command=self.root.destroy)
-        btn_cerrar.grid(row=0, column=1, sticky="e", padx=(6, 0))
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cerrar)
+        main_layout.addLayout(btn_layout)
 
-    def setup_botones_seaboard(self, parent):
+    def setup_botones_seaboard(self, layout):
         """Configura los botones específicos para SEABOARD"""
         if self.carpetas_sharepoint:
-            info_sp = ttk.Label(
-                parent,
-                text=f"Se detectaron {len(self.carpetas_sharepoint)} carpeta(s) de SharePoint sincronizada(s)",
-                font=("Arial", 10),
-                foreground="green",
-                wraplength=640
-            )
-            info_sp.pack(fill="x", pady=(0, 6))
+            info_sp = QLabel(f"Se detectaron {len(self.carpetas_sharepoint)} carpeta(s) de SharePoint sincronizada(s)")
+            info_sp.setStyleSheet("color: #27ae60; padding: 5px;")
+            info_sp.setFont(QFont("Arial", 10))
+            layout.addWidget(info_sp)
 
-            btn_sharepoint = tk.Button(
-                parent,
-                text="BUSCAR EN SHAREPOINT SINCRONIZADO",
-                command=self.seleccionar_desde_sharepoint,
-                font=("Arial", 12, "bold"),
-                bg="#0078D4",
-                fg="white",
-                padx=12,
-                pady=12,
-                cursor="hand2",
-                relief=tk.RAISED,
-                bd=3
-            )
-            btn_sharepoint.pack(fill="x", pady=(0, 8))
+            btn_sharepoint = QPushButton("BUSCAR EN SHAREPOINT SINCRONIZADO")
+            btn_sharepoint.setMinimumHeight(60)
+            btn_sharepoint.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+            btn_sharepoint.setStyleSheet("""
+                QPushButton {
+                    background-color: #0078D4;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 15px;
+                }
+                QPushButton:hover {
+                    background-color: #005a9e;
+                }
+            """)
+            btn_sharepoint.clicked.connect(self.seleccionar_desde_sharepoint)
+            layout.addWidget(btn_sharepoint)
 
-        btn_local = tk.Button(
-            parent,
-            text="BUSCAR EN CARPETA LOCAL",
-            command=self.seleccionar_y_procesar_seaboard,
-            font=("Arial", 12, "bold"),
-            bg="#4CAF50",
-            fg="white",
-            padx=12,
-            pady=12,
-            cursor="hand2",
-            relief=tk.RAISED,
-            bd=3
-        )
-        btn_local.pack(fill="x", pady=(0, 2))
+        btn_local = QPushButton("BUSCAR EN CARPETA LOCAL")
+        btn_local.setMinimumHeight(60)
+        btn_local.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        btn_local.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 15px;
+            }
+            QPushButton:hover {
+                background-color: #388E3C;
+            }
+        """)
+        btn_local.clicked.connect(self.seleccionar_y_procesar_seaboard)
+        layout.addWidget(btn_local)
 
-    def setup_botones_casa(self, parent):
+    def setup_botones_casa(self, layout):
         """Configura los botones específicos para CASA DEL AGRICULTOR"""
-        info = ttk.Label(
-            parent,
-            text="Seleccione la carpeta que contiene los archivos ZIP de facturas",
-            font=("Arial", 10),
-            wraplength=640
-        )
-        info.pack(fill="x", pady=(0, 6))
+        info = QLabel("Seleccione la carpeta que contiene los archivos ZIP de facturas")
+        info.setFont(QFont("Arial", 10))
+        info.setStyleSheet("padding: 5px;")
+        layout.addWidget(info)
 
-        btn_procesar = tk.Button(
-            parent,
-            text="SELECCIONAR CARPETA CON ARCHIVOS ZIP",
-            command=self.seleccionar_y_procesar_casa,
-            font=("Arial", 12, "bold"),
-            bg="#27ae60",
-            fg="white",
-            padx=12,
-            pady=12,
-            cursor="hand2",
-            relief=tk.RAISED,
-            bd=3
-        )
-        btn_procesar.pack(fill="x", pady=(0, 2))
+        btn_procesar = QPushButton("SELECCIONAR CARPETA CON ARCHIVOS ZIP")
+        btn_procesar.setMinimumHeight(60)
+        btn_procesar.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        btn_procesar.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 15px;
+            }
+            QPushButton:hover {
+                background-color: #1e8449;
+            }
+        """)
+        btn_procesar.clicked.connect(self.seleccionar_y_procesar_casa)
+        layout.addWidget(btn_procesar)
+
+    def setup_botones_lactalis(self, layout):
+        """Configura los botones específicos para LACTALIS COMPRAS"""
+        info = QLabel("Seleccione la carpeta que contiene los archivos XML de Lactalis Compras")
+        info.setFont(QFont("Arial", 10))
+        info.setStyleSheet("padding: 5px;")
+        layout.addWidget(info)
+
+        btn_procesar = QPushButton("SELECCIONAR CARPETA CON ARCHIVOS XML")
+        btn_procesar.setMinimumHeight(60)
+        btn_procesar.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        btn_procesar.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 15px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        btn_procesar.clicked.connect(self.seleccionar_y_procesar_lactalis)
+        layout.addWidget(btn_procesar)
 
     def volver_al_selector(self):
         """Marca la intención de volver y cierra la ventana actual"""
         self.request_return = True
-        self.root.destroy()
+        self.close()
 
     def seleccionar_desde_sharepoint(self):
         """Muestra un diálogo para seleccionar una carpeta de SharePoint"""
         if not self.carpetas_sharepoint:
-            messagebox.showinfo("No hay carpetas", "No se detectaron carpetas de SharePoint")
+            QMessageBox.information(self, "No hay carpetas", "No se detectaron carpetas de SharePoint")
             return
 
-        ventana = tk.Toplevel(self.root)
-        ventana.title("Seleccionar Carpeta de SharePoint")
-        ventana.geometry("700x500")
-        ventana.transient(self.root)
-        ventana.grab_set()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Seleccionar Carpeta de SharePoint")
+        dialog.setMinimumSize(700, 500)
 
-        frame = ttk.Frame(ventana, padding="20")
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout()
 
-        ttk.Label(frame, text="Carpetas de SharePoint Detectadas", font=("Arial", 14, "bold")).pack(pady=10)
+        titulo = QLabel("Carpetas de SharePoint Detectadas")
+        titulo.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        layout.addWidget(titulo)
 
-        list_frame = ttk.Frame(frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-
-        scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        listbox = tk.Listbox(list_frame, font=("Arial", 10), yscrollcommand=scrollbar.set, height=15)
-        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=listbox.yview)
-
+        listbox = QListWidget()
         for carpeta in self.carpetas_sharepoint:
-            listbox.insert(tk.END, str(carpeta))
+            listbox.addItem(str(carpeta))
+        layout.addWidget(listbox)
+
+        btn_seleccionar = QPushButton("Procesar Carpeta Seleccionada")
+        btn_seleccionar.setStyleSheet("""
+            QPushButton {
+                background-color: #0078D4;
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+            }
+        """)
 
         def seleccionar():
-            sel = listbox.curselection()
-            if not sel:
-                messagebox.showwarning("Selección requerida", "Seleccione una carpeta")
-                return
+            if listbox.currentRow() >= 0:
+                carpeta_sel = self.carpetas_sharepoint[listbox.currentRow()]
+                dialog.close()
+                self.procesar_carpeta_xml(carpeta_sel)
+            else:
+                QMessageBox.warning(dialog, "Selección requerida", "Seleccione una carpeta")
 
-            carpeta_sel = self.carpetas_sharepoint[sel[0]]
-            ventana.destroy()
-            self.procesar_carpeta_xml(carpeta_sel)
+        btn_seleccionar.clicked.connect(seleccionar)
+        layout.addWidget(btn_seleccionar)
 
-        ttk.Button(frame, text="Procesar Carpeta Seleccionada", command=seleccionar).pack(pady=10)
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def seleccionar_y_procesar_seaboard(self):
         """Permite seleccionar una carpeta local con archivos XML"""
-        carpeta = filedialog.askdirectory(title="Seleccione la carpeta con archivos XML")
+        carpeta = QFileDialog.getExistingDirectory(
+            self,
+            "Seleccione la carpeta con archivos XML",
+            "",
+            QFileDialog.Option.ShowDirsOnly
+        )
 
-        if not carpeta:
-            return
-
-        self.procesar_carpeta_xml(Path(carpeta))
+        if carpeta:
+            self.procesar_carpeta_xml(Path(carpeta))
 
     def procesar_carpeta_xml(self, carpeta: Path):
         """Procesa la carpeta con archivos XML"""
         archivos_xml = list(carpeta.glob("*.xml"))
 
         if not archivos_xml:
-            messagebox.showerror("Sin archivos", "No se encontraron archivos XML")
+            QMessageBox.critical(self, "Sin archivos", "No se encontraron archivos XML")
             return
 
-        respuesta = messagebox.askyesno(
+        respuesta = QMessageBox.question(
+            self,
             "Confirmar",
-            f"Se encontraron {len(archivos_xml)} archivo(s) XML.\n\n¿Procesar ahora?"
+            f"Se encontraron {len(archivos_xml)} archivo(s) XML.\n\n¿Procesar ahora?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
-        if not respuesta:
-            return
-
-        self.carpeta_entrada = carpeta
-        self.progress.start()
-        self.estado_label.config(text=f"Procesando {len(archivos_xml)} archivo(s)...", foreground="orange")
-        self.root.update()
-        self.root.after(100, self.ejecutar_procesamiento_seaboard)
+        if respuesta == QMessageBox.StandardButton.Yes:
+            self.carpeta_entrada = carpeta
+            self.iniciar_procesamiento_seaboard()
 
     def seleccionar_y_procesar_casa(self):
         """Permite seleccionar una carpeta con archivos ZIP"""
-        carpeta = filedialog.askdirectory(title="Seleccione la carpeta con archivos ZIP")
+        carpeta = QFileDialog.getExistingDirectory(
+            self,
+            "Seleccione la carpeta con archivos ZIP",
+            "",
+            QFileDialog.Option.ShowDirsOnly
+        )
 
         if not carpeta:
             return
 
         self.carpeta_entrada = Path(carpeta)
-
         zip_files = list(self.carpeta_entrada.glob("*.zip"))
 
         if not zip_files:
-            messagebox.showerror("Sin archivos", "No se encontraron archivos ZIP")
+            QMessageBox.critical(self, "Sin archivos", "No se encontraron archivos ZIP")
             return
 
-        respuesta = messagebox.askyesno(
+        respuesta = QMessageBox.question(
+            self,
             "Confirmar",
-            f"Se encontraron {len(zip_files)} archivo(s) ZIP.\n\n¿Procesar ahora?"
+            f"Se encontraron {len(zip_files)} archivo(s) ZIP.\n\n¿Procesar ahora?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
-        if not respuesta:
+        if respuesta == QMessageBox.StandardButton.Yes:
+            self.iniciar_procesamiento_casa()
+
+    def seleccionar_y_procesar_lactalis(self):
+        """Permite seleccionar una carpeta con archivos XML de Lactalis"""
+        carpeta = QFileDialog.getExistingDirectory(
+            self,
+            "Seleccione la carpeta con archivos XML de Lactalis",
+            "",
+            QFileDialog.Option.ShowDirsOnly
+        )
+
+        if not carpeta:
             return
 
-        self.progress.start()
-        self.estado_label.config(text=f"Procesando {len(zip_files)} archivo(s)...", foreground="orange")
-        self.root.update()
-        self.root.after(100, self.ejecutar_procesamiento_casa)
+        self.carpeta_entrada = Path(carpeta)
+        xml_files = list(self.carpeta_entrada.glob("*.xml"))
+
+        if not xml_files:
+            QMessageBox.critical(self, "Sin archivos", "No se encontraron archivos XML")
+            return
+
+        respuesta = QMessageBox.question(
+            self,
+            "Confirmar",
+            f"Se encontraron {len(xml_files)} archivo(s) XML.\n\n¿Procesar ahora?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if respuesta == QMessageBox.StandardButton.Yes:
+            self.iniciar_procesamiento_lactalis()
 
     def buscar_o_crear_plantilla(self) -> Path:
         """Busca o crea la plantilla REGGIS"""
         script_dir = Path(__file__).parent.parent.parent
-
         plantilla = script_dir / "Plantilla_REGGIS.xlsx"
 
         if not plantilla.exists():
@@ -344,53 +433,69 @@ class InterfazUnificada:
 
         wb.save(ruta)
 
-    def ejecutar_procesamiento_seaboard(self):
-        """Ejecuta el procesamiento para SEABOARD"""
-        try:
-            plantilla = self.buscar_o_crear_plantilla()
-            procesador = ProcesadorSeaboard(self.carpeta_entrada, plantilla)
-            carpeta_salida = procesador.procesar()
+    def iniciar_procesamiento_seaboard(self):
+        """Inicia el procesamiento para SEABOARD"""
+        self.progress.setVisible(True)
+        self.estado_label.setText("Procesando archivos...")
+        self.estado_label.setStyleSheet("color: #f39c12; padding: 10px;")
 
-            self.progress.stop()
-            self.estado_label.config(text="Proceso completado exitosamente", foreground="green")
+        plantilla = self.buscar_o_crear_plantilla()
+        procesador = ProcesadorSeaboard(self.carpeta_entrada, plantilla)
 
-            respuesta = messagebox.askyesno(
+        self.procesamiento_thread = ProcesamientoThread(procesador.procesar)
+        self.procesamiento_thread.finished.connect(self.procesamiento_finalizado)
+        self.procesamiento_thread.start()
+
+    def iniciar_procesamiento_casa(self):
+        """Inicia el procesamiento para CASA DEL AGRICULTOR"""
+        self.progress.setVisible(True)
+        self.estado_label.setText("Procesando archivos...")
+        self.estado_label.setStyleSheet("color: #f39c12; padding: 10px;")
+
+        carpeta_salida = self.carpeta_entrada.parent / "Resultados_CASA_DEL_AGRICULTOR"
+        carpeta_salida.mkdir(exist_ok=True)
+
+        procesador = ProcesadorCasaDelAgricultor(self.carpeta_entrada, carpeta_salida)
+
+        self.procesamiento_thread = ProcesamientoThread(procesador.procesar)
+        self.procesamiento_thread.finished.connect(self.procesamiento_finalizado)
+        self.procesamiento_thread.start()
+
+    def iniciar_procesamiento_lactalis(self):
+        """Inicia el procesamiento para LACTALIS COMPRAS"""
+        self.progress.setVisible(True)
+        self.estado_label.setText("Procesando archivos de Lactalis...")
+        self.estado_label.setStyleSheet("color: #f39c12; padding: 10px;")
+
+        # Por ahora usamos el mismo procesador que SEABOARD (se puede personalizar después)
+        plantilla = self.buscar_o_crear_plantilla()
+        procesador = ProcesadorSeaboard(self.carpeta_entrada, plantilla)
+
+        self.procesamiento_thread = ProcesamientoThread(procesador.procesar)
+        self.procesamiento_thread.finished.connect(self.procesamiento_finalizado)
+        self.procesamiento_thread.start()
+
+    def procesamiento_finalizado(self, success, message, result):
+        """Callback cuando el procesamiento termina"""
+        self.progress.setVisible(False)
+
+        if success:
+            self.estado_label.setText("Proceso completado exitosamente")
+            self.estado_label.setStyleSheet("color: #27ae60; padding: 10px;")
+
+            respuesta = QMessageBox.question(
+                self,
                 "Éxito",
-                f"Proceso completado!\n\nArchivos guardados en:\n{carpeta_salida.name}\n\n¿Abrir carpeta?"
+                f"{message}\n\nArchivos guardados en:\n{result.name}\n\n¿Abrir carpeta?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
 
-            if respuesta:
-                self.abrir_carpeta(carpeta_salida)
-
-        except Exception as e:
-            self.progress.stop()
-            self.estado_label.config(text="Error en el procesamiento", foreground="red")
-            messagebox.showerror("Error", f"Error: {str(e)}")
-
-    def ejecutar_procesamiento_casa(self):
-        """Ejecuta el procesamiento para CASA DEL AGRICULTOR"""
-        try:
-            carpeta_salida = self.carpeta_entrada.parent / "Resultados_CASA_DEL_AGRICULTOR"
-            carpeta_salida.mkdir(exist_ok=True)
-
-            procesador = ProcesadorCasaDelAgricultor(self.carpeta_entrada, carpeta_salida)
-            procesador.procesar()
-
-            self.progress.stop()
-            self.estado_label.config(text="Proceso completado exitosamente", foreground="green")
-
-            respuesta = messagebox.askyesno(
-                "Éxito",
-                f"Proceso completado!\n\nArchivos guardados en:\n{carpeta_salida.name}\n\n¿Abrir carpeta?"
-            )
-
-            if respuesta:
-                self.abrir_carpeta(carpeta_salida)
-
-        except Exception as e:
-            self.progress.stop()
-            self.estado_label.config(text="Error en el procesamiento", foreground="red")
-            messagebox.showerror("Error", f"Error: {str(e)}")
+            if respuesta == QMessageBox.StandardButton.Yes:
+                self.abrir_carpeta(result)
+        else:
+            self.estado_label.setText("Error en el procesamiento")
+            self.estado_label.setStyleSheet("color: #e74c3c; padding: 10px;")
+            QMessageBox.critical(self, "Error", message)
 
     def abrir_carpeta(self, carpeta: Path):
         """Abre la carpeta en el explorador de archivos del sistema"""
@@ -400,7 +505,3 @@ class InterfazUnificada:
             os.system(f'open "{carpeta}"')
         else:
             os.system(f'xdg-open "{carpeta}"')
-
-    def ejecutar(self):
-        """Inicia el loop principal de la interfaz"""
-        self.root.mainloop()

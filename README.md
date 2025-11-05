@@ -14,7 +14,7 @@ bogota-sae/
 │   │   ├── constants.py                   # Constantes (NAMESPACES, mapeos)
 │   │   └── logging_config.py             # Configuración de logging
 │   │
-│   ├── ui/                                # Interfaces de usuario (Tkinter)
+│   ├── ui/                                # Interfaces de usuario (PyQt6)
 │   │   ├── __init__.py
 │   │   ├── selector_cliente.py           # Ventana de selección de cliente
 │   │   └── interfaz_unificada.py         # Interfaz principal de procesamiento
@@ -45,9 +45,9 @@ bogota-sae/
 
 ### 1. **Separación de Responsabilidades**
 
-#### **UI (User Interface)**
-- `selector_cliente.py`: Interfaz para seleccionar entre SEABOARD y CASA DEL AGRICULTOR
-- `interfaz_unificada.py`: Interfaz principal con gestión de archivos y progreso
+#### **UI (User Interface) - PyQt6**
+- `selector_cliente.py`: Interfaz moderna para seleccionar entre SEABOARD, CASA DEL AGRICULTOR y LACTALIS COMPRAS
+- `interfaz_unificada.py`: Interfaz principal con gestión de archivos, progreso y procesamiento en segundo plano
 
 #### **Procesadores (Business Logic)**
 - `seaboard_processor.py`:
@@ -95,13 +95,22 @@ python main.py
 python -m src.main
 ```
 
+### Instalación de Dependencias
+
+Antes de ejecutar la aplicación, instala las dependencias necesarias:
+
+```bash
+pip install -r requirements.txt
+```
+
 ### Flujo de trabajo
 
-1. **Selección de cliente**: Elige entre SEABOARD o CASA DEL AGRICULTOR
+1. **Selección de cliente**: Elige entre SEABOARD, CASA DEL AGRICULTOR o LACTALIS COMPRAS
 2. **Selección de archivos**:
    - SEABOARD: Carpeta con archivos XML (local o SharePoint)
    - CASA DEL AGRICULTOR: Carpeta con archivos ZIP
-3. **Procesamiento**: La aplicación extrae y transforma los datos
+   - LACTALIS COMPRAS: Carpeta con archivos XML
+3. **Procesamiento**: La aplicación extrae y transforma los datos en segundo plano
 4. **Resultados**: Archivos Excel en formato REGGIS
 
 ## Beneficios de la Nueva Estructura
@@ -129,10 +138,11 @@ python -m src.main
 ## Tecnologías
 
 - **Python 3.x**
-- **Tkinter**: Interfaz gráfica
+- **PyQt6**: Interfaz gráfica moderna y responsive
 - **openpyxl**: Manipulación de archivos Excel
 - **xml.etree.ElementTree**: Parsing de XML
 - **zipfile**: Extracción de archivos ZIP
+- **QThread**: Procesamiento en segundo plano sin bloquear la UI
 
 ## Clientes Soportados
 
@@ -145,6 +155,11 @@ python -m src.main
 - Procesa archivos ZIP con XML embebido
 - Conversión de libras a kilogramos
 - Parsing de unidades en descripción (GRAMOS, GRS)
+
+### 🥛 LACTALIS COMPRAS
+- Procesa archivos XML de facturas de compra de Lactalis
+- Extracción de datos de facturas electrónicas
+- Formato REGGIS estándar
 
 ## Logs
 
