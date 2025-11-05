@@ -1,2 +1,5 @@
 PyQt6>=6.6.0
 openpyxl>=3.1.2
+requests>=2.31.0
+packaging>=23.0
+pyinstaller>=6.0.0

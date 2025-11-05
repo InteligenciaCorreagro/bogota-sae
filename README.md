@@ -161,6 +161,48 @@ pip install -r requirements.txt
 - Extracción de datos de facturas electrónicas
 - Formato REGGIS estándar
 
+## 🔄 Sistema de Auto-Actualización
+
+La aplicación incluye un **sistema de actualización automática** que mantiene el software siempre actualizado sin intervención técnica:
+
+### Para Usuarios Finales:
+✅ **Detección automática**: Al abrir la app, verifica si hay actualizaciones
+✅ **Descarga automática**: Descarga la nueva versión con barra de progreso
+✅ **Instalación sin errores**: Se instala y reinicia automáticamente
+✅ **Cero configuración**: No requiere conocimientos técnicos
+
+### Flujo de Actualización:
+1. Usuario abre la aplicación
+2. Si hay actualización disponible, muestra diálogo con:
+   - Versión actual vs. nueva
+   - Notas de la versión
+   - Botones: "Actualizar Ahora" o "Más Tarde"
+3. Si acepta:
+   - Descarga en segundo plano
+   - Instala automáticamente
+   - Reinicia con la nueva versión
+
+### Para Desarrolladores:
+Ver guía completa en [DEPLOYMENT.md](DEPLOYMENT.md) para publicar nuevas versiones.
+
+**Publicar actualización:**
+```bash
+# 1. Actualizar versión en src/config/version.py
+# 2. Commit y push
+git add .
+git commit -m "Release: v1.0.1"
+git push origin main
+
+# 3. Crear tag
+git tag -a v1.0.1 -m "Release v1.0.1"
+git push origin v1.0.1
+
+# 4. GitHub Actions automático:
+#    - Compila ejecutable
+#    - Crea release
+#    - Usuarios reciben actualización
+```
+
 ## Logs
 
 Los logs se generan automáticamente con el formato:

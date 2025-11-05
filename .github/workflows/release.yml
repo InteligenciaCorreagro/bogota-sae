@@ -1,0 +1,73 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Se activa cuando se crea un tag como v1.0.0
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build executable
+      run: python build_exe.py
+
+    - name: Get version
+      id: get_version
+      run: |
+        $version = "${{ github.ref_name }}"
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref_name }}
+        body: |
+          ## Procesador de Facturas REGGIS ${{ github.ref_name }}
+
+          ### Novedades en esta versión
+          - Actualización automática del sistema
+          - Mejoras de rendimiento y estabilidad
+          - Corrección de errores
+
+          ### Instalación
+          1. Descarga el archivo ejecutable
+          2. Ejecuta ProcesadorFacturas.exe
+          3. La aplicación verificará automáticamente actualizaciones futuras
+
+          ### Clientes Soportados
+          - 🌐 SEABOARD
+          - 🌾 CASA DEL AGRICULTOR
+          - 🥛 LACTALIS COMPRAS
+
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ProcesadorFacturas_v${{ steps.get_version.outputs.VERSION }}.exe
+        asset_name: ProcesadorFacturas.exe
+        asset_content_type: application/octet-stream
