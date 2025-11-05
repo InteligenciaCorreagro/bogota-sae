@@ -8,10 +8,38 @@ import PyInstaller.__main__
 import shutil
 from pathlib import Path
 import sys
+import time
 
 # Importar versión
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from config.version import __version__, APP_NAME
+
+def safe_rmtree(path, max_retries=3, delay=1):
+    """
+    Elimina un directorio de forma segura con reintentos.
+    
+    Args:
+        path: Ruta del directorio a eliminar
+        max_retries: Número máximo de reintentos
+        delay: Tiempo de espera entre reintentos (segundos)
+    """
+    for attempt in range(max_retries):
+        try:
+            if path.exists():
+                shutil.rmtree(path, ignore_errors=False)
+                return True
+        except PermissionError as e:
+            if attempt < max_retries - 1:
+                print(f"   ⚠️  Archivo en uso, reintentando en {delay}s... ({attempt + 1}/{max_retries})")
+                time.sleep(delay)
+            else:
+                print(f"   ⚠️  No se pudo eliminar {path}: {e}")
+                print(f"   💡 Intenta cerrar procesos que puedan estar usando estos archivos")
+                return False
+        except Exception as e:
+            print(f"   ❌ Error inesperado: {e}")
+            return False
+    return False
 
 def build_executable():
     """Construye el ejecutable usando PyInstaller"""
@@ -25,48 +53,81 @@ def build_executable():
         dir_path = Path(dir_name)
         if dir_path.exists():
             print(f"🧹 Limpiando {dir_name}/")
-            shutil.rmtree(dir_path)
+            if not safe_rmtree(dir_path):
+                response = input("\n¿Continuar de todas formas? (s/n): ").lower()
+                if response != 's':
+                    print("❌ Construcción cancelada")
+                    return False
+
+    # Determinar punto de entrada
+    possible_entries = [
+        Path("src/main.py"),
+        Path("main.py"),
+        Path("src/__main__.py")
+    ]
+    
+    entry = None
+    for entry_path in possible_entries:
+        if entry_path.exists():
+            entry = entry_path
+            break
+    
+    if not entry:
+        print("❌ No se encontró el archivo de entrada (main.py)")
+        return False
 
     # Nombre del ejecutable
     exe_name = f"ProcesadorFacturas_v{__version__}"
-
+    
+    # Timestamp para directorios únicos (opcional)
+    ts = int(time.time())
+    work_dir = Path(f"build_{ts}")
+    dist_dir = Path("dist")
+    
     # Opciones de PyInstaller
     pyinstaller_args = [
-        'run.py',                          # Script principal
-        '--name', exe_name,                # Nombre del ejecutable
-        '--onefile',                       # Un solo archivo
-        '--windowed',                      # Sin ventana de consola
-        '--icon', 'NONE',                  # Sin icono (agregar si existe)
-        '--add-data', 'src;src',          # Incluir carpeta src
-        '--hidden-import', 'PyQt6',
-        '--hidden-import', 'openpyxl',
-        '--hidden-import', 'requests',
-        '--hidden-import', 'packaging',
-        '--collect-all', 'PyQt6',
-        '--clean',                         # Limpiar caché
-        '--noconfirm',                     # No pedir confirmación
-        f'--distpath=dist',                # Carpeta de salida
-        f'--workpath=build',               # Carpeta de trabajo
+        str(entry),
+        "--name", exe_name,
+        "--onefile",
+        "--windowed",
+        "--add-data", "src;src",
+        "--hidden-import", "PyQt6",
+        "--hidden-import", "openpyxl",
+        "--hidden-import", "requests",
+        "--hidden-import", "packaging",
+        "--collect-all", "PyQt6",
+        "--clean",
+        "--noconfirm",
+        f"--distpath={dist_dir}",
+        f"--workpath={work_dir}",
     ]
 
     print("\n📦 Ejecutando PyInstaller...")
     print(f"   Nombre: {exe_name}.exe")
     print(f"   Versión: {__version__}")
+    print(f"   Entry point: {entry}")
     print()
 
     try:
         PyInstaller.__main__.run(pyinstaller_args)
 
-        print("\n" + "=" * 60)
-        print(f"✅ ¡Ejecutable creado exitosamente!")
-        print(f"📍 Ubicación: dist/{exe_name}.exe")
-        print(f"📊 Tamaño: {(Path('dist') / f'{exe_name}.exe').stat().st_size / (1024*1024):.1f} MB")
-        print("=" * 60)
-
-        return True
+        exe_path = dist_dir / f"{exe_name}.exe"
+        
+        if exe_path.exists():
+            print("\n" + "=" * 60)
+            print(f"✅ ¡Ejecutable creado exitosamente!")
+            print(f"📍 Ubicación: {exe_path}")
+            print(f"📊 Tamaño: {exe_path.stat().st_size / (1024*1024):.1f} MB")
+            print("=" * 60)
+            return True
+        else:
+            print(f"\n❌ El ejecutable no se creó en la ubicación esperada: {exe_path}")
+            return False
 
     except Exception as e:
         print(f"\n❌ Error al crear el ejecutable: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
