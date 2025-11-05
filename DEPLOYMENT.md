@@ -132,8 +132,13 @@ Los usuarios también pueden verificar manualmente desde el menú (si se impleme
 
 Los logs de actualización se guardan en:
 ```
-procesamiento_facturas_YYYYMMDD_HHMMSS.log
+logs/procesamiento.log
 ```
+
+El sistema implementa rotación automática de logs:
+- Cada archivo puede crecer hasta 10MB
+- Se mantienen los últimos 5 archivos de respaldo
+- Los archivos antiguos se renombran automáticamente (procesamiento.log.1, .2, etc.)
 
 ## ⚠️ Troubleshooting
 
@@ -190,6 +195,6 @@ Desarrollador                GitHub                  Usuario
 ## 🆘 Soporte
 
 Para problemas con actualizaciones:
-- Revisar logs en `procesamiento_facturas_*.log`
+- Revisar logs en `logs/procesamiento.log`
 - Reportar issue en GitHub
 - Contactar al equipo de desarrollo

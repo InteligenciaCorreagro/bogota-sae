@@ -205,10 +205,17 @@ git push origin v1.0.1
 
 ## Logs
 
-Los logs se generan automáticamente con el formato:
+Los logs se generan automáticamente en el directorio `logs/`:
 ```
-procesamiento_facturas_YYYYMMDD_HHMMSS.log
+logs/procesamiento.log
 ```
+
+El sistema implementa **rotación automática de logs**:
+- Archivo único: `procesamiento.log`
+- Tamaño máximo por archivo: **10MB**
+- Archivos de respaldo: **5 últimos**
+- Rotación automática: Cuando el archivo alcanza 10MB, se renombra a `procesamiento.log.1`, `procesamiento.log.2`, etc.
+- Los logs más antiguos se eliminan automáticamente
 
 ## Formato de Salida
 
