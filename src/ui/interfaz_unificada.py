@@ -19,6 +19,7 @@ from config.constants import REGGIS_HEADERS
 from utils.sharepoint_detector import DetectorSharePoint
 from processors.seaboard_processor import ProcesadorSeaboard
 from processors.casa_del_agricultor_processor import ProcesadorCasaDelAgricultor
+from processors.lactalis_processor import ProcesadorLactalisCompras
 
 logger = logging.getLogger(__name__)
 
@@ -244,12 +245,13 @@ class InterfazUnificada(QMainWindow):
 
     def setup_botones_lactalis(self, layout):
         """Configura los botones específicos para LACTALIS COMPRAS"""
-        info = QLabel("Seleccione la carpeta que contiene los archivos XML de Lactalis Compras")
+        info = QLabel("Seleccione la carpeta con archivos ZIP (que pueden contener otros ZIPs o XMLs) o archivos XML directos")
         info.setFont(QFont("Arial", 10))
         info.setStyleSheet("padding: 5px;")
+        info.setWordWrap(True)
         layout.addWidget(info)
 
-        btn_procesar = QPushButton("SELECCIONAR CARPETA CON ARCHIVOS XML")
+        btn_procesar = QPushButton("SELECCIONAR CARPETA CON ARCHIVOS ZIP/XML")
         btn_procesar.setMinimumHeight(60)
         btn_procesar.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         btn_procesar.setStyleSheet("""
@@ -378,10 +380,10 @@ class InterfazUnificada(QMainWindow):
             self.iniciar_procesamiento_casa()
 
     def seleccionar_y_procesar_lactalis(self):
-        """Permite seleccionar una carpeta con archivos XML de Lactalis"""
+        """Permite seleccionar una carpeta con archivos ZIP o XML de Lactalis"""
         carpeta = QFileDialog.getExistingDirectory(
             self,
-            "Seleccione la carpeta con archivos XML de Lactalis",
+            "Seleccione la carpeta con archivos ZIP/XML de Lactalis",
             "",
             QFileDialog.Option.ShowDirsOnly
         )
@@ -390,16 +392,30 @@ class InterfazUnificada(QMainWindow):
             return
 
         self.carpeta_entrada = Path(carpeta)
+
+        # Buscar archivos ZIP y XML
+        zip_files = list(self.carpeta_entrada.glob("*.zip"))
         xml_files = list(self.carpeta_entrada.glob("*.xml"))
 
-        if not xml_files:
-            QMessageBox.critical(self, "Sin archivos", "No se encontraron archivos XML")
+        total_files = len(zip_files) + len(xml_files)
+
+        if total_files == 0:
+            QMessageBox.critical(self, "Sin archivos", "No se encontraron archivos ZIP ni XML")
             return
+
+        # Mensaje de confirmación
+        mensaje = []
+        if zip_files:
+            mensaje.append(f"{len(zip_files)} archivo(s) ZIP")
+        if xml_files:
+            mensaje.append(f"{len(xml_files)} archivo(s) XML")
+
+        texto_archivos = " y ".join(mensaje)
 
         respuesta = QMessageBox.question(
             self,
             "Confirmar",
-            f"Se encontraron {len(xml_files)} archivo(s) XML.\n\n¿Procesar ahora?",
+            f"Se encontraron:\n{texto_archivos}\n\n¿Procesar ahora?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -467,9 +483,11 @@ class InterfazUnificada(QMainWindow):
         self.estado_label.setText("Procesando archivos de Lactalis...")
         self.estado_label.setStyleSheet("color: #f39c12; padding: 10px;")
 
-        # Por ahora usamos el mismo procesador que SEABOARD (se puede personalizar después)
-        plantilla = self.buscar_o_crear_plantilla()
-        procesador = ProcesadorSeaboard(self.carpeta_entrada, plantilla)
+        # Usar procesador específico de Lactalis
+        carpeta_salida = self.carpeta_entrada.parent / "Resultados_LACTALIS"
+        carpeta_salida.mkdir(exist_ok=True)
+
+        procesador = ProcesadorLactalisCompras(self.carpeta_entrada, carpeta_salida)
 
         self.procesamiento_thread = ProcesamientoThread(procesador.procesar)
         self.procesamiento_thread.finished.connect(self.procesamiento_finalizado)
