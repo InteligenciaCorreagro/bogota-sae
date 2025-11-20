@@ -16,8 +16,9 @@ VERSION_INFO = {
     'description': 'Procesador unificado de facturas XML a formato Excel REGGIS',
 
     # Configuración de auto-actualización
-    'update_check_url': 'https://raw.githubusercontent.com/tu-usuario/bogota-sae/main/version.json',
-    'download_url_base': 'https://github.com/tu-usuario/bogota-sae/releases/download',
+    # NOTA: Configurar estas URLs cuando esté listo para publicar actualizaciones
+    'update_check_url': None,  # Deshabilitado hasta configurar URL válida
+    'download_url_base': 'https://github.com/InteligenciaCorreagro/bogota-sae/releases/download',
 
     # Clientes soportados
     'supported_clients': [

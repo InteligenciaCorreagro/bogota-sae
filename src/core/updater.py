@@ -81,6 +81,11 @@ class Updater:
         Returns:
             Dict con información de la actualización o None si no hay
         """
+        # Verificar si la URL está configurada
+        if not self.update_check_url:
+            logger.debug("Auto-actualización deshabilitada (URL no configurada)")
+            return None
+
         try:
             # Descargar información de versión remota
             with urllib.request.urlopen(self.update_check_url, timeout=10) as response:

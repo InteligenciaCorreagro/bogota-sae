@@ -22,7 +22,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from config.constants import REGGIS_HEADERS
-from processors.seaboard_processor import ProcesadorSeaboard  # Temporal - cambiar por procesador específico
+from processors.lactalis_processor import ProcesadorLactalis
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,8 @@ class TabLactalisCompras(QWidget):
 
         # Información
         info_label = QLabel(
-            "ℹ️ Seleccione la carpeta que contiene los archivos XML de facturas de Lactalis Compras."
+            "ℹ️ Seleccione la carpeta que contiene los archivos ZIP.\n"
+            "Cada ZIP debe contener un archivo XML (y opcionalmente PDF)."
         )
         info_label.setFont(QFont("Arial", 9))
         info_label.setStyleSheet("color: #34495e; padding: 5px;")
@@ -141,7 +142,7 @@ class TabLactalisCompras(QWidget):
         archivos_layout.addWidget(info_label)
 
         # Botón seleccionar carpeta
-        btn_seleccionar = QPushButton("📂 SELECCIONAR CARPETA CON ARCHIVOS XML")
+        btn_seleccionar = QPushButton("📂 SELECCIONAR CARPETA CON ARCHIVOS ZIP")
         btn_seleccionar.setMinimumHeight(60)
         btn_seleccionar.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         btn_seleccionar.setStyleSheet("""
@@ -196,8 +197,8 @@ class TabLactalisCompras(QWidget):
 
         # --- Información adicional ---
         info_footer = QLabel(
-            "💡 Tab preparado para personalización según requisitos de Lactalis Compras.\n"
-            "Los archivos se procesarán y guardarán en formato Excel REGGIS."
+            "💡 Los archivos ZIP se procesarán automáticamente (cada ZIP debe contener XML+PDF).\n"
+            "Los resultados se guardarán en formato Excel REGGIS."
         )
         info_footer.setFont(QFont("Arial", 8))
         info_footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -222,10 +223,10 @@ class TabLactalisCompras(QWidget):
         )
 
     def seleccionar_carpeta(self):
-        """Permite seleccionar una carpeta con archivos XML"""
+        """Permite seleccionar una carpeta con archivos ZIP"""
         carpeta = QFileDialog.getExistingDirectory(
             self,
-            "Seleccione la carpeta con archivos XML de Lactalis",
+            "Seleccione la carpeta con archivos ZIP de Lactalis Compras",
             "",
             QFileDialog.Option.ShowDirsOnly
         )
@@ -235,14 +236,14 @@ class TabLactalisCompras(QWidget):
 
         self.carpeta_entrada = Path(carpeta)
 
-        # Buscar archivos XML
-        xml_files = list(self.carpeta_entrada.glob("*.xml"))
+        # Buscar archivos ZIP
+        zip_files = list(self.carpeta_entrada.glob("*.zip"))
 
-        if not xml_files:
+        if not zip_files:
             QMessageBox.critical(
                 self,
                 "Sin archivos",
-                "No se encontraron archivos XML en la carpeta seleccionada"
+                "No se encontraron archivos ZIP en la carpeta seleccionada"
             )
             return
 
@@ -261,7 +262,7 @@ class TabLactalisCompras(QWidget):
         respuesta = QMessageBox.question(
             self,
             "Confirmar procesamiento",
-            f"Se encontraron {len(xml_files)} archivo(s) XML.\n\n"
+            f"Se encontraron {len(zip_files)} archivo(s) ZIP.\n\n"
             f"Carpeta: {self.carpeta_entrada.name}\n\n"
             f"Configuración:\n{config_text}\n\n"
             f"¿Procesar ahora?",
@@ -301,22 +302,16 @@ class TabLactalisCompras(QWidget):
         logger.info(f"Plantilla creada exitosamente: {ruta}")
 
     def iniciar_procesamiento(self):
-        """
-        Inicia el procesamiento en segundo plano
-
-        TODO: Reemplazar ProcesadorSeaboard por procesador específico de Lactalis
-        cuando esté implementado (ej: ProcesadorLactalis)
-        """
+        """Inicia el procesamiento en segundo plano"""
         self.progress.setVisible(True)
-        self.estado_label.setText("⏳ Procesando archivos XML de LACTALIS COMPRAS...")
+        self.estado_label.setText("⏳ Procesando archivos ZIP de LACTALIS COMPRAS...")
         self.estado_label.setStyleSheet("color: #f39c12; padding: 10px; font-weight: bold;")
 
         # Obtener plantilla
         plantilla = self.buscar_o_crear_plantilla()
 
-        # TEMPORAL: Usa procesador de SEABOARD
-        # TODO: Crear ProcesadorLactalis en src/processors/lactalis_processor.py
-        procesador = ProcesadorSeaboard(self.carpeta_entrada, plantilla)
+        # Usar procesador específico de Lactalis
+        procesador = ProcesadorLactalis(self.carpeta_entrada, plantilla)
 
         # Iniciar thread de procesamiento
         self.procesamiento_thread = ProcesamientoThread(procesador.procesar)
