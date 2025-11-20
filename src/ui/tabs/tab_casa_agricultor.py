@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from processors.casa_del_agricultor_processor import ProcesadorCasaDelAgricultor
+from config.constants import get_data_output_path
 
 logger = logging.getLogger(__name__)
 
@@ -208,9 +209,8 @@ class TabCasaAgricultor(QWidget):
         self.estado_label.setText("⏳ Procesando archivos ZIP de CASA DEL AGRICULTOR...")
         self.estado_label.setStyleSheet("color: #f39c12; padding: 10px; font-weight: bold;")
 
-        # Crear carpeta de salida
-        carpeta_salida = self.carpeta_entrada.parent / "Resultados_CASA_DEL_AGRICULTOR"
-        carpeta_salida.mkdir(exist_ok=True)
+        # Crear carpeta de salida usando estructura data/YYYY-MM-DD/
+        carpeta_salida = get_data_output_path()
 
         # Crear procesador
         procesador = ProcesadorCasaDelAgricultor(self.carpeta_entrada, carpeta_salida)

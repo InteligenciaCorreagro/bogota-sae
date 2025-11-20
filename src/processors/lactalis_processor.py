@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from openpyxl.styles import Font, PatternFill, Alignment
 
-from config.constants import REGGIS_HEADERS, NAMESPACES
+from config.constants import REGGIS_HEADERS, NAMESPACES, get_data_output_path
 from extractors.lactalis_extractor import FacturaExtractorLactalis
 
 logger = logging.getLogger(__name__)
@@ -231,21 +231,13 @@ class ProcesadorLactalis:
 
     def crear_carpeta_salida(self) -> Path:
         """
-        Crea la carpeta de salida para los resultados
+        Crea la carpeta de salida para los resultados en data/YYYY-MM-DD/
 
         Returns:
             Path a la carpeta de salida
         """
-        # Carpeta base de resultados
-        carpeta_resultados_base = self.plantilla_excel.parent / "Resultados_LACTALIS_COMPRAS"
-        carpeta_resultados_base.mkdir(exist_ok=True)
-
-        # Carpeta específica para esta carpeta de entrada
-        nombre_carpeta_entrada = self.carpeta_archivos.name
-        carpeta_salida = carpeta_resultados_base / nombre_carpeta_entrada
-        carpeta_salida.mkdir(exist_ok=True)
-
-        return carpeta_salida
+        # Usar helper que crea estructura data/YYYY-MM-DD/
+        return get_data_output_path()
 
     def escribir_reggis(self, lineas: List[Dict]) -> Path:
         """

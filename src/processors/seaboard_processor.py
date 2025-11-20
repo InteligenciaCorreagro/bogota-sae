@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from config.constants import NAMESPACES
+from config.constants import NAMESPACES, get_data_output_path
 from extractors.seaboard_extractor import FacturaExtractorSeaboard
 
 logger = logging.getLogger(__name__)
@@ -58,15 +58,9 @@ class ProcesadorSeaboard:
         return lineas_reggis
 
     def crear_carpeta_salida(self) -> Path:
-        """Crea la carpeta de salida para los resultados"""
-        carpeta_resultados_base = self.plantilla_excel.parent / "Resultados_SEABOARD"
-        carpeta_resultados_base.mkdir(exist_ok=True)
-
-        nombre_carpeta_xml = self.carpeta_xml.name
-        carpeta_salida = carpeta_resultados_base / nombre_carpeta_xml
-        carpeta_salida.mkdir(exist_ok=True)
-
-        return carpeta_salida
+        """Crea la carpeta de salida para los resultados en data/YYYY-MM-DD/"""
+        # Usar helper que crea estructura data/YYYY-MM-DD/
+        return get_data_output_path()
 
     def escribir_reggis(self, lineas: List[Dict]) -> Path:
         """Escribe las líneas procesadas en el archivo Excel"""

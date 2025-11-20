@@ -171,6 +171,20 @@ class MainWindow(QMainWindow):
         accion_logs.triggered.connect(self.abrir_carpeta_logs)
         menu_herramientas.addAction(accion_logs)
 
+        # Acción: Borrar logs
+        accion_borrar_logs = QAction("&Borrar archivos de logs", self)
+        accion_borrar_logs.setStatusTip("Eliminar todos los archivos de log")
+        accion_borrar_logs.triggered.connect(self.borrar_logs)
+        menu_herramientas.addAction(accion_borrar_logs)
+
+        menu_herramientas.addSeparator()
+
+        # Acción: Abrir carpeta de datos
+        accion_data = QAction("Abrir carpeta de &Datos procesados", self)
+        accion_data.setStatusTip("Abrir la carpeta con archivos procesados")
+        accion_data.triggered.connect(self.abrir_carpeta_data)
+        menu_herramientas.addAction(accion_data)
+
         # --- Menú Vista ---
         menu_vista = menubar.addMenu("&Vista")
 
@@ -242,8 +256,10 @@ class MainWindow(QMainWindow):
         import platform
         from pathlib import Path
 
-        # Los logs se guardan en el directorio actual
-        carpeta_logs = Path.cwd()
+        # Los logs se guardan en la carpeta 'logs'
+        carpeta_logs = Path('logs')
+        if not carpeta_logs.exists():
+            carpeta_logs.mkdir(exist_ok=True)
 
         try:
             if platform.system() == 'Windows':
@@ -257,6 +273,85 @@ class MainWindow(QMainWindow):
                 self,
                 "Error",
                 f"No se pudo abrir la carpeta de logs:\n{str(e)}"
+            )
+
+    def borrar_logs(self):
+        """Elimina todos los archivos de log de la carpeta logs"""
+        from pathlib import Path
+
+        carpeta_logs = Path('logs')
+        if not carpeta_logs.exists():
+            QMessageBox.information(
+                self,
+                "Sin archivos",
+                "No hay archivos de log para borrar."
+            )
+            return
+
+        # Contar archivos .log
+        archivos_log = list(carpeta_logs.glob('*.log'))
+        if not archivos_log:
+            QMessageBox.information(
+                self,
+                "Sin archivos",
+                "No hay archivos de log para borrar."
+            )
+            return
+
+        # Confirmar con el usuario
+        respuesta = QMessageBox.question(
+            self,
+            "Confirmar eliminación",
+            f"¿Está seguro de borrar {len(archivos_log)} archivo(s) de log?\n\n"
+            "Esta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if respuesta == QMessageBox.StandardButton.Yes:
+            try:
+                eliminados = 0
+                for archivo in archivos_log:
+                    archivo.unlink()
+                    eliminados += 1
+
+                QMessageBox.information(
+                    self,
+                    "Logs eliminados",
+                    f"Se eliminaron {eliminados} archivo(s) de log exitosamente."
+                )
+                self.statusBar().showMessage(f"Se eliminaron {eliminados} archivo(s) de log", 3000)
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Error al eliminar archivos de log:\n{str(e)}"
+                )
+
+    def abrir_carpeta_data(self):
+        """Abre la carpeta donde se guardan los archivos procesados"""
+        import os
+        import platform
+        from pathlib import Path
+
+        # Los archivos procesados se guardan en la carpeta 'data'
+        carpeta_data = Path('data')
+        if not carpeta_data.exists():
+            carpeta_data.mkdir(exist_ok=True)
+
+        try:
+            if platform.system() == 'Windows':
+                os.startfile(carpeta_data)
+            elif platform.system() == 'Darwin':  # macOS
+                os.system(f'open "{carpeta_data}"')
+            else:  # Linux
+                os.system(f'xdg-open "{carpeta_data}"')
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"No se pudo abrir la carpeta de datos:\n{str(e)}"
             )
 
     def mostrar_acerca_de(self):

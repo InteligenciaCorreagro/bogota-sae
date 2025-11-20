@@ -2,6 +2,9 @@
 Constantes y configuración para el procesador de facturas
 """
 
+from pathlib import Path
+from datetime import datetime
+
 # Namespaces UBL estándar para Colombia
 NAMESPACES = {
     'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
@@ -75,3 +78,31 @@ LACTALIS_CONFIG = {
     'principal': 'C',  # Lactalis como Comprador
 }
 
+
+def get_data_output_path(subfolder: str = "") -> Path:
+    """
+    Crea y retorna la ruta de salida para archivos procesados.
+    Estructura: data/YYYY-MM-DD/subfolder/
+
+    Args:
+        subfolder: Subcarpeta opcional dentro de la fecha
+
+    Returns:
+        Path a la carpeta de salida
+    """
+    # Carpeta base de datos
+    data_dir = Path('data')
+    data_dir.mkdir(exist_ok=True)
+
+    # Carpeta con fecha de hoy
+    today = datetime.now().strftime('%Y-%m-%d')
+    date_dir = data_dir / today
+    date_dir.mkdir(exist_ok=True)
+
+    # Si hay subcarpeta, crearla
+    if subfolder:
+        output_dir = date_dir / subfolder
+        output_dir.mkdir(exist_ok=True)
+        return output_dir
+
+    return date_dir
