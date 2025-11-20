@@ -71,8 +71,9 @@ class FacturaExtractorLactalis:
             municipio = self._extraer_municipio()
 
             # Extraer datos del vendedor (proveedor)
-            # NOTA: Algunos XMLs (ej: DSP*) no tienen NIT de vendedor
-            nit_vendedor = self._extraer_nit_vendedor() or ""  # Permitir vacío
+            # NOTA: Busca en múltiples ubicaciones (AccountingSupplierParty, PartyTaxScheme)
+            # para soportar diferentes formatos de XML (incluyendo DSP)
+            nit_vendedor = self._extraer_nit_vendedor() or ""  # Permitir vacío si no se encuentra
             nombre_vendedor = self._extraer_nombre_vendedor()
 
             logger.debug(
@@ -181,21 +182,52 @@ class FacturaExtractorLactalis:
         return municipio.text.strip() if municipio is not None and municipio.text else ""
 
     def _extraer_nit_vendedor(self) -> str:
-        """Extrae el NIT del vendedor (proveedor)"""
+        """Extrae el NIT del vendedor (proveedor) - busca en múltiples ubicaciones"""
+        # 1. Ubicación estándar en AccountingSupplierParty
         nit = self.root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyTaxScheme/cbc:CompanyID', NAMESPACES)
         if nit is not None and nit.text:
             return nit.text.strip()
 
-        # Alternativa
+        # 2. Alternativa en PartyIdentification
         nit = self.root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyIdentification/cbc:ID', NAMESPACES)
-        return nit.text.strip() if nit is not None and nit.text else ""
+        if nit is not None and nit.text:
+            return nit.text.strip()
+
+        # 3. Buscar en cualquier PartyTaxScheme (para XMLs DSP)
+        nit = self.root.find('.//cac:PartyTaxScheme/cbc:CompanyID', NAMESPACES)
+        if nit is not None and nit.text:
+            return nit.text.strip()
+
+        # 4. Intentar sin namespace
+        nit = self.root.find('.//*[local-name()="CompanyID"]')
+        if nit is not None and nit.text:
+            return nit.text.strip()
+
+        return ""
 
     def _extraer_nombre_vendedor(self) -> str:
-        """Extrae el nombre del vendedor (proveedor)"""
+        """Extrae el nombre del vendedor (proveedor) - busca en múltiples ubicaciones"""
+        # 1. Ubicación estándar en PartyLegalEntity
         nombre = self.root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cbc:RegistrationName', NAMESPACES)
-        if nombre is None:
-            nombre = self.root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyName/cbc:Name', NAMESPACES)
-        return nombre.text.strip() if nombre is not None and nombre.text else ""
+        if nombre is not None and nombre.text:
+            return nombre.text.strip()
+
+        # 2. Alternativa en PartyName
+        nombre = self.root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyName/cbc:Name', NAMESPACES)
+        if nombre is not None and nombre.text:
+            return nombre.text.strip()
+
+        # 3. Buscar en cualquier PartyTaxScheme/RegistrationName (para XMLs DSP)
+        nombre = self.root.find('.//cac:PartyTaxScheme/cbc:RegistrationName', NAMESPACES)
+        if nombre is not None and nombre.text:
+            return nombre.text.strip()
+
+        # 4. Intentar sin namespace
+        nombre = self.root.find('.//*[local-name()="RegistrationName"]')
+        if nombre is not None and nombre.text:
+            return nombre.text.strip()
+
+        return ""
 
     def _extraer_linea_producto(self, line_element, numero_factura: str, fecha_factura: str,
                                  fecha_pago: str, nit_comprador: str, nombre_comprador: str,
