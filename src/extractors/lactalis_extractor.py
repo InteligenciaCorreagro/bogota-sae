@@ -47,14 +47,23 @@ class FacturaExtractorLactalis:
             Lista de diccionarios con datos de cada línea de la factura
         """
         if self.root is None:
+            logger.warning(f"{self.archivo_nombre}: root es None")
             return []
 
         try:
+            # Debug: Log del tag raíz
+            logger.debug(f"{self.archivo_nombre}: Tag raiz = {self.root.tag}")
+
             # Extraer datos generales de la factura
             numero_factura = self._extraer_numero_factura()
             fecha_factura = self._extraer_fecha_factura()
             fecha_pago = self._extraer_fecha_vencimiento()
             moneda = self._extraer_moneda()
+
+            logger.debug(
+                f"{self.archivo_nombre}: Factura={numero_factura}, "
+                f"Fecha={fecha_factura}, Moneda={moneda}"
+            )
 
             # Extraer datos del comprador (Lactalis)
             nit_comprador = self._extraer_nit_comprador()
@@ -65,11 +74,31 @@ class FacturaExtractorLactalis:
             nit_vendedor = self._extraer_nit_vendedor()
             nombre_vendedor = self._extraer_nombre_vendedor()
 
-            # Extraer líneas de productos
-            lineas = []
+            logger.debug(
+                f"{self.archivo_nombre}: Comprador={nombre_comprador} ({nit_comprador}), "
+                f"Vendedor={nombre_vendedor} ({nit_vendedor})"
+            )
+
+            # Extraer líneas de productos - intentar con y sin namespace
             invoice_lines = self.root.findall('.//cac:InvoiceLine', NAMESPACES)
 
-            for line in invoice_lines:
+            # Si no encuentra con namespace, intentar sin namespace
+            if not invoice_lines:
+                logger.warning(f"{self.archivo_nombre}: No se encontraron InvoiceLines con namespace, intentando sin namespace")
+                # Buscar cualquier elemento que termine en InvoiceLine
+                invoice_lines = self.root.findall('.//*[local-name()="InvoiceLine"]')
+
+            logger.debug(f"{self.archivo_nombre}: Se encontraron {len(invoice_lines)} lineas de factura")
+
+            if not invoice_lines:
+                logger.warning(
+                    f"{self.archivo_nombre}: No se encontraron lineas de productos. "
+                    f"Esto puede ser un AttachedDocument o un tipo de documento diferente."
+                )
+                return []
+
+            lineas = []
+            for idx, line in enumerate(invoice_lines, 1):
                 linea_data = self._extraer_linea_producto(
                     line,
                     numero_factura,
@@ -85,8 +114,10 @@ class FacturaExtractorLactalis:
 
                 if linea_data:
                     lineas.append(linea_data)
+                else:
+                    logger.warning(f"{self.archivo_nombre}: Linea {idx} no se pudo extraer")
 
-            logger.info(f"Extraídas {len(lineas)} líneas de {self.archivo_nombre}")
+            logger.info(f"Extraidas {len(lineas)} lineas de {self.archivo_nombre}")
             return lineas
 
         except Exception as e:

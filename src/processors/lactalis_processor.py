@@ -1,16 +1,16 @@
 """
 Procesador específico para LACTALIS COMPRAS
-Lee archivos ZIP, extrae XML y genera Excel en formato REGGIS
+Lee archivos ZIP y XML, extrae datos y genera Excel en formato REGGIS
 """
 
 import zipfile
 import logging
 import openpyxl
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 from openpyxl.styles import Font, PatternFill, Alignment
 
-from config.constants import REGGIS_HEADERS
+from config.constants import REGGIS_HEADERS, NAMESPACES
 from extractors.lactalis_extractor import FacturaExtractorLactalis
 
 logger = logging.getLogger(__name__)
@@ -21,63 +21,84 @@ class ProcesadorLactalis:
     Procesador específico para LACTALIS COMPRAS
 
     Funcionalidad:
-    1. Lee carpeta con archivos ZIP
+    1. Lee carpeta con archivos ZIP y/o XML
     2. Por cada ZIP, extrae el archivo XML
-    3. Procesa el XML con FacturaExtractorLactalis
-    4. Genera archivo Excel con formato REGGIS
+    3. Por cada XML suelto, lo procesa directamente
+    4. Procesa todos los XML con FacturaExtractorLactalis
+    5. Genera archivo Excel con formato REGGIS
     """
 
-    def __init__(self, carpeta_zips: Path, plantilla_excel: Path):
+    def __init__(self, carpeta_archivos: Path, plantilla_excel: Path):
         """
         Inicializa el procesador
 
         Args:
-            carpeta_zips: Path a carpeta con archivos ZIP
+            carpeta_archivos: Path a carpeta con archivos ZIP y/o XML
             plantilla_excel: Path a plantilla Excel base
         """
-        self.carpeta_zips = carpeta_zips
+        self.carpeta_archivos = carpeta_archivos
         self.plantilla_excel = plantilla_excel
         self.carpeta_salida = None
 
     def procesar(self) -> Path:
         """
-        Procesa todos los archivos ZIP en la carpeta
+        Procesa todos los archivos ZIP y XML en la carpeta
 
         Returns:
             Path a la carpeta de salida con resultados
         """
-        logger.info(f"Iniciando procesamiento de LACTALIS COMPRAS desde: {self.carpeta_zips}")
+        logger.info(f"Iniciando procesamiento de LACTALIS COMPRAS desde: {self.carpeta_archivos}")
 
-        # Buscar archivos ZIP
-        archivos_zip = list(self.carpeta_zips.glob("*.zip"))
-        logger.info(f"Se encontraron {len(archivos_zip)} archivo(s) ZIP")
+        # Buscar archivos ZIP y XML
+        archivos_zip = list(self.carpeta_archivos.glob("*.zip"))
+        archivos_xml = list(self.carpeta_archivos.glob("*.xml"))
 
-        if not archivos_zip:
-            raise ValueError("No se encontraron archivos ZIP en la carpeta")
+        total_archivos = len(archivos_zip) + len(archivos_xml)
+        logger.info(f"Se encontraron {len(archivos_zip)} archivo(s) ZIP y {len(archivos_xml)} archivo(s) XML")
 
-        # Procesar todos los ZIPs
+        if total_archivos == 0:
+            raise ValueError("No se encontraron archivos ZIP ni XML en la carpeta")
+
+        # Procesar todos los archivos
         todas_lineas = []
         archivos_procesados = 0
         archivos_error = 0
 
+        # Procesar ZIPs
         for zip_file in archivos_zip:
             try:
                 lineas = self.procesar_zip(zip_file)
                 todas_lineas.extend(lineas)
                 archivos_procesados += 1
-                logger.info(f"✓ Procesado: {zip_file.name} - {len(lineas)} líneas")
+                logger.info(f"[OK] Procesado ZIP: {zip_file.name} - {len(lineas)} lineas")
             except Exception as e:
                 archivos_error += 1
-                logger.error(f"✗ Error procesando {zip_file.name}: {str(e)}")
+                logger.error(f"[ERROR] Procesando ZIP {zip_file.name}: {str(e)}")
+
+        # Procesar XMLs sueltos
+        for xml_file in archivos_xml:
+            try:
+                lineas = self.procesar_xml(xml_file)
+                todas_lineas.extend(lineas)
+                archivos_procesados += 1
+                logger.info(f"[OK] Procesado XML: {xml_file.name} - {len(lineas)} lineas")
+            except Exception as e:
+                archivos_error += 1
+                logger.error(f"[ERROR] Procesando XML {xml_file.name}: {str(e)}")
 
         logger.info(
             f"Procesamiento completado: {archivos_procesados} exitosos, "
             f"{archivos_error} con errores, "
-            f"{len(todas_lineas)} líneas totales"
+            f"{len(todas_lineas)} lineas totales"
         )
 
         if not todas_lineas:
-            raise ValueError("No se pudo extraer ninguna línea de los archivos ZIP")
+            raise ValueError(
+                f"No se pudo extraer ninguna linea de los archivos.\n"
+                f"Archivos procesados: {archivos_procesados}\n"
+                f"Archivos con error: {archivos_error}\n\n"
+                f"Revise los logs para mas detalles."
+            )
 
         # Crear carpeta de salida
         self.carpeta_salida = self.crear_carpeta_salida()
@@ -87,6 +108,67 @@ class ProcesadorLactalis:
 
         logger.info(f"Archivo Excel generado: {archivo_salida}")
         return self.carpeta_salida
+
+    def procesar_xml(self, xml_path: Path) -> List[Dict]:
+        """
+        Procesa un archivo XML directamente
+
+        Args:
+            xml_path: Path al archivo XML
+
+        Returns:
+            Lista de líneas extraídas del XML
+        """
+        try:
+            # Leer contenido del XML
+            with open(xml_path, 'r', encoding='utf-8', errors='ignore') as f:
+                xml_content = f.read()
+
+            # Verificar si es un AttachedDocument y extraer la factura
+            invoice_xml = self.extraer_invoice_de_attached_document(xml_content)
+
+            if invoice_xml:
+                # Es un AttachedDocument, procesar el XML interno
+                logger.debug(f"{xml_path.name}: Es un AttachedDocument, extrayendo factura interna")
+                extractor = FacturaExtractorLactalis(invoice_xml, xml_path.name)
+            else:
+                # Es un XML de factura directo
+                logger.debug(f"{xml_path.name}: Es una factura directa")
+                extractor = FacturaExtractorLactalis(xml_content, xml_path.name)
+
+            lineas = extractor.extraer_datos()
+            return lineas
+
+        except Exception as e:
+            logger.error(f"Error procesando XML {xml_path.name}: {str(e)}", exc_info=True)
+            raise
+
+    def extraer_invoice_de_attached_document(self, xml_content: str) -> Optional[str]:
+        """
+        Extrae el XML de la factura desde un documento adjunto (AttachedDocument)
+
+        Args:
+            xml_content: Contenido XML completo
+
+        Returns:
+            XML de la factura si es un AttachedDocument, None si no lo es
+        """
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(xml_content)
+
+            # Buscar en ExternalReference/Description (formato SEABOARD/LACTALIS)
+            description = root.find('.//cac:ExternalReference/cbc:Description', NAMESPACES)
+
+            if description is not None and description.text:
+                return description.text.strip()
+
+            # No es un AttachedDocument
+            return None
+
+        except Exception as e:
+            logger.debug(f"No es un AttachedDocument: {str(e)}")
+            return None
 
     def procesar_zip(self, zip_path: Path) -> List[Dict]:
         """
@@ -110,7 +192,7 @@ class ProcesadorLactalis:
                 xml_files = [f for f in archivos_en_zip if f.lower().endswith('.xml')]
 
                 if not xml_files:
-                    logger.warning(f"No se encontró archivo XML en {zip_path.name}")
+                    logger.warning(f"No se encontro archivo XML en {zip_path.name}")
                     return []
 
                 # Procesar el primer XML encontrado
@@ -121,12 +203,22 @@ class ProcesadorLactalis:
                 with zip_ref.open(xml_filename) as xml_file:
                     xml_content = xml_file.read().decode('utf-8', errors='ignore')
 
-                # Procesar el XML con el extractor
-                extractor = FacturaExtractorLactalis(xml_content, f"{zip_path.name}/{xml_filename}")
+                # Verificar si es un AttachedDocument y extraer la factura
+                invoice_xml = self.extraer_invoice_de_attached_document(xml_content)
+
+                if invoice_xml:
+                    # Es un AttachedDocument, procesar el XML interno
+                    logger.debug(f"{zip_path.name}: Es un AttachedDocument, extrayendo factura interna")
+                    extractor = FacturaExtractorLactalis(invoice_xml, f"{zip_path.name}/{xml_filename}")
+                else:
+                    # Es un XML de factura directo
+                    logger.debug(f"{zip_path.name}: Es una factura directa")
+                    extractor = FacturaExtractorLactalis(xml_content, f"{zip_path.name}/{xml_filename}")
+
                 lineas = extractor.extraer_datos()
 
                 if len(xml_files) > 1:
-                    logger.warning(f"Se encontraron {len(xml_files)} XMLs en {zip_path.name}, solo se procesó el primero")
+                    logger.warning(f"Se encontraron {len(xml_files)} XMLs en {zip_path.name}, solo se proceso el primero")
 
         except zipfile.BadZipFile:
             logger.error(f"Archivo ZIP corrupto: {zip_path.name}")
@@ -149,7 +241,7 @@ class ProcesadorLactalis:
         carpeta_resultados_base.mkdir(exist_ok=True)
 
         # Carpeta específica para esta carpeta de entrada
-        nombre_carpeta_entrada = self.carpeta_zips.name
+        nombre_carpeta_entrada = self.carpeta_archivos.name
         carpeta_salida = carpeta_resultados_base / nombre_carpeta_entrada
         carpeta_salida.mkdir(exist_ok=True)
 
@@ -200,7 +292,7 @@ class ProcesadorLactalis:
             ws.cell(row=idx, column=24, value=linea['total_con_iva'])
 
         # Generar nombre de archivo de salida
-        archivo_salida = self.carpeta_salida / f"LACTALIS_COMPRAS_{self.carpeta_zips.name}.xlsx"
+        archivo_salida = self.carpeta_salida / f"LACTALIS_COMPRAS_{self.carpeta_archivos.name}.xlsx"
 
         # Guardar
         wb.save(archivo_salida)
