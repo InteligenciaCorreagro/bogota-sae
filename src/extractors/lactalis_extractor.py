@@ -8,7 +8,7 @@ import logging
 from typing import List, Dict, Optional
 from decimal import Decimal, InvalidOperation
 
-from config.constants import NAMESPACES, CURRENCY_CODE_MAP, UNIT_MAP
+from config.constants import NAMESPACES, CURRENCY_CODE_MAP, UNIT_MAP, LACTALIS_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -65,18 +65,19 @@ class FacturaExtractorLactalis:
                 f"Fecha={fecha_factura}, Moneda={moneda}"
             )
 
-            # Extraer datos del comprador (Lactalis)
-            nit_comprador = self._extraer_nit_comprador()
-            nombre_comprador = self._extraer_nombre_comprador()
+            # Datos del comprador (Lactalis) - VALORES FIJOS
+            nit_comprador = LACTALIS_CONFIG['nit_comprador']
+            nombre_comprador = LACTALIS_CONFIG['nombre_comprador']
             municipio = self._extraer_municipio()
 
             # Extraer datos del vendedor (proveedor)
-            nit_vendedor = self._extraer_nit_vendedor()
+            # NOTA: Algunos XMLs (ej: DSP*) no tienen NIT de vendedor
+            nit_vendedor = self._extraer_nit_vendedor() or ""  # Permitir vacío
             nombre_vendedor = self._extraer_nombre_vendedor()
 
             logger.debug(
                 f"{self.archivo_nombre}: Comprador={nombre_comprador} ({nit_comprador}), "
-                f"Vendedor={nombre_vendedor} ({nit_vendedor})"
+                f"Vendedor={nombre_vendedor} ({nit_vendedor if nit_vendedor else 'SIN NIT'})"
             )
 
             # Extraer líneas de productos - intentar con y sin namespace
@@ -211,26 +212,19 @@ class FacturaExtractorLactalis:
             Diccionario con datos de la línea en formato REGGIS
         """
         try:
-            # Nombre del producto
-            nombre_producto = line_element.find('.//cac:Item/cbc:Description', NAMESPACES)
-            if nombre_producto is None:
-                nombre_producto = line_element.find('.//cac:Item/cbc:Name', NAMESPACES)
-            nombre_producto_text = nombre_producto.text.strip() if nombre_producto is not None and nombre_producto.text else ""
+            # VALORES FIJOS DE LACTALIS (según especificaciones del cliente)
+            nombre_producto_text = LACTALIS_CONFIG['nombre_producto']  # Siempre "LECHE CRUDA"
+            codigo_text = LACTALIS_CONFIG['codigo_subyacente']  # Siempre "SPN-1"
+            unidad_medida = LACTALIS_CONFIG['unidad_medida']  # Siempre "Lt"
 
-            # Código del producto
-            codigo = line_element.find('.//cac:Item/cac:SellersItemIdentification/cbc:ID', NAMESPACES)
-            if codigo is None:
-                codigo = line_element.find('.//cac:Item/cac:StandardItemIdentification/cbc:ID', NAMESPACES)
-            codigo_text = codigo.text.strip() if codigo is not None and codigo.text else ""
-
-            # Cantidad
+            # Cantidad (sí se extrae del XML)
             cantidad_element = line_element.find('.//cbc:InvoicedQuantity', NAMESPACES)
+            if cantidad_element is None:
+                # Fallback sin namespace
+                cantidad_element = line_element.find('.//*[local-name()="InvoicedQuantity"]')
+
             cantidad = self._parse_decimal(cantidad_element.text if cantidad_element is not None else "0")
             cantidad_original = cantidad  # Guardar cantidad original
-
-            # Unidad de medida
-            unidad_raw = cantidad_element.get('unitCode', 'UN') if cantidad_element is not None else 'UN'
-            unidad_medida = UNIT_MAP.get(unidad_raw.upper(), 'Un')
 
             # Precio unitario
             precio_element = line_element.find('.//cac:Price/cbc:PriceAmount', NAMESPACES)
@@ -253,26 +247,26 @@ class FacturaExtractorLactalis:
             total_iva_fmt = self._formatear_numero(total_iva)
             total_con_iva_fmt = self._formatear_numero(total_con_iva)
 
-            # Construir línea en formato REGGIS
+            # Construir línea en formato REGGIS con valores fijos de Lactalis
             linea_reggis = {
                 'numero_factura': numero_factura,
-                'nombre_producto': nombre_producto_text,
-                'codigo_subyacente': codigo_text,
-                'unidad_medida': unidad_medida,
+                'nombre_producto': nombre_producto_text,  # FIJO: "LECHE CRUDA"
+                'codigo_subyacente': codigo_text,  # FIJO: "SPN-1"
+                'unidad_medida': unidad_medida,  # FIJO: "Lt"
                 'cantidad': cantidad_fmt,
                 'precio_unitario': precio_unitario_fmt,
                 'fecha_factura': fecha_factura,
                 'fecha_pago': fecha_pago,
-                'nit_comprador': nit_comprador,
-                'nombre_comprador': nombre_comprador,
-                'nit_vendedor': nit_vendedor,
+                'nit_comprador': nit_comprador,  # FIJO: NIT de Lactalis
+                'nombre_comprador': nombre_comprador,  # FIJO: "LACTALIS"
+                'nit_vendedor': nit_vendedor,  # Puede estar vacío en algunos XMLs
                 'nombre_vendedor': nombre_vendedor,
-                'principal': 'C',  # Lactalis es Comprador
+                'principal': LACTALIS_CONFIG['principal'],  # FIJO: "C"
                 'municipio': municipio,
                 'iva': str(int(iva_percent)),
-                'descripcion': nombre_producto_text,
-                'activa_factura': '',
-                'activa_bodega': '',
+                'descripcion': LACTALIS_CONFIG['descripcion'],  # FIJO: vacío
+                'activa_factura': LACTALIS_CONFIG['activa_factura'],  # FIJO: "1"
+                'activa_bodega': LACTALIS_CONFIG['activa_bodega'],  # FIJO: "1"
                 'incentivo': '',
                 'cantidad_original': cantidad_original_fmt,
                 'moneda': moneda,

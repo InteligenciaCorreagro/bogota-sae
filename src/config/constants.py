@@ -58,3 +58,20 @@ REGGIS_HEADERS = [
     'Total IVA',
     'Total Con IVA'
 ]
+
+# Constantes específicas para LACTALIS COMPRAS
+LACTALIS_CONFIG = {
+    # NIT de Lactalis (comprador) - CONFIGURAR CON EL NIT REAL
+    'nit_comprador': '890800458',  # TODO: Verificar NIT correcto de Lactalis
+    'nombre_comprador': 'LACTALIS',
+
+    # Valores fijos para todas las líneas
+    'codigo_subyacente': 'SPN-1',
+    'nombre_producto': 'LECHE CRUDA',
+    'unidad_medida': 'Lt',
+    'activa_factura': '1',
+    'activa_bodega': '1',
+    'descripcion': '',
+    'principal': 'C',  # Lactalis como Comprador
+}
+

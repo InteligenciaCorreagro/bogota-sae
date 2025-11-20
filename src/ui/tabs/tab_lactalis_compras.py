@@ -1,10 +1,6 @@
 """
 Tab para procesamiento de facturas LACTALIS COMPRAS
-Plantilla preparada para implementar lógica personalizada
-
-NOTA: Este tab está estructurado como plantilla.
-Actualmente usa el procesador de SEABOARD como base, pero puede ser
-personalizado para las necesidades específicas de Lactalis Compras.
+Procesa archivos ZIP y XML con configuración fija según especificaciones de Lactalis
 """
 
 import os
@@ -16,8 +12,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QPushButton, QProgressBar, QFileDialog,
-                              QMessageBox, QGroupBox, QTextEdit, QFormLayout,
-                              QLineEdit, QCheckBox)
+                              QMessageBox, QGroupBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
@@ -49,28 +44,18 @@ class TabLactalisCompras(QWidget):
     """
     Tab para procesamiento de facturas LACTALIS COMPRAS
 
-    Este tab está preparado como plantilla base. Incluye:
-    - Interfaz moderna con campos personalizables
-    - Estructura de procesamiento en segundo plano
-    - Slots preparados para conectar lógica de negocio
-    - Validaciones de entrada
-
-    TODO para personalización:
-    1. Crear procesador específico en src/processors/lactalis_processor.py
-    2. Implementar extractor específico en src/extractors/lactalis_extractor.py
-    3. Agregar campos de configuración específicos de Lactalis
-    4. Personalizar validaciones según requerimientos
+    Procesamiento simplificado con configuración fija:
+    - Producto: Siempre "LECHE CRUDA"
+    - Código Subyacente: Siempre "SPN-1"
+    - Unidad: Siempre "Lt" (litros)
+    - Activa Factura/Bodega: Siempre "1"
+    - Comprador: Siempre Lactalis (NIT fijo)
     """
 
     def __init__(self):
         super().__init__()
         self.carpeta_entrada = None
         self.procesamiento_thread = None
-
-        # Configuraciones personalizables (ejemplo)
-        self.filtrar_por_fecha = False
-        self.incluir_anuladas = False
-
         self.setup_ui()
 
     def setup_ui(self):
@@ -89,8 +74,8 @@ class TabLactalisCompras(QWidget):
 
         # --- Descripción ---
         descripcion = QLabel(
-            "Procesa facturas de compra de Lactalis en formato XML.\n"
-            "Extrae datos de facturas electrónicas y los convierte al formato REGGIS estándar."
+            "Procesa archivos ZIP y XML de facturas de Lactalis Compras.\n"
+            "Configuración fija: LECHE CRUDA • SPN-1 • Litros • Activa=1"
         )
         descripcion.setFont(QFont("Arial", 9))
         descripcion.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -98,35 +83,8 @@ class TabLactalisCompras(QWidget):
         descripcion.setWordWrap(True)
         main_layout.addWidget(descripcion)
 
-        # --- Group Box: Configuración ---
-        group_config = QGroupBox("⚙️ Configuración de Procesamiento")
-        group_config.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        config_layout = QFormLayout()
-        config_layout.setSpacing(10)
-
-        # Checkbox: Incluir facturas anuladas
-        self.check_anuladas = QCheckBox("Incluir facturas anuladas")
-        self.check_anuladas.setToolTip("Si está marcado, incluirá facturas con estado anulado")
-        self.check_anuladas.stateChanged.connect(self.on_config_changed)
-        config_layout.addRow("Facturas anuladas:", self.check_anuladas)
-
-        # Checkbox: Filtrar por fecha
-        self.check_filtrar_fecha = QCheckBox("Filtrar por rango de fechas")
-        self.check_filtrar_fecha.setToolTip("Activar para filtrar facturas por fecha")
-        self.check_filtrar_fecha.stateChanged.connect(self.on_config_changed)
-        config_layout.addRow("Filtro de fecha:", self.check_filtrar_fecha)
-
-        # Campo: Proveedor específico (ejemplo de campo personalizable)
-        self.input_proveedor = QLineEdit()
-        self.input_proveedor.setPlaceholderText("Dejar vacío para todos los proveedores")
-        self.input_proveedor.setToolTip("NIT o nombre del proveedor específico")
-        config_layout.addRow("Proveedor (opcional):", self.input_proveedor)
-
-        group_config.setLayout(config_layout)
-        main_layout.addWidget(group_config)
-
         # --- Group Box: Selección de Archivos ---
-        group_archivos = QGroupBox("📁 Seleccionar Archivos XML")
+        group_archivos = QGroupBox("📁 Seleccionar Archivos")
         group_archivos.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         archivos_layout = QVBoxLayout()
         archivos_layout.setSpacing(10)
@@ -208,20 +166,6 @@ class TabLactalisCompras(QWidget):
 
         self.setLayout(main_layout)
 
-    def on_config_changed(self):
-        """
-        Slot para manejar cambios en configuración
-        Aquí puedes agregar lógica cuando cambian las opciones
-        """
-        self.incluir_anuladas = self.check_anuladas.isChecked()
-        self.filtrar_por_fecha = self.check_filtrar_fecha.isChecked()
-
-        logger.debug(
-            f"Configuración actualizada: "
-            f"incluir_anuladas={self.incluir_anuladas}, "
-            f"filtrar_fecha={self.filtrar_por_fecha}"
-        )
-
     def seleccionar_carpeta(self):
         """Permite seleccionar una carpeta con archivos ZIP"""
         carpeta = QFileDialog.getExistingDirectory(
@@ -248,23 +192,12 @@ class TabLactalisCompras(QWidget):
             return
 
         # Confirmar procesamiento
-        config_info = []
-        if self.incluir_anuladas:
-            config_info.append("✓ Incluir facturas anuladas")
-        if self.filtrar_por_fecha:
-            config_info.append("✓ Filtrar por fecha")
-        proveedor = self.input_proveedor.text().strip()
-        if proveedor:
-            config_info.append(f"✓ Proveedor: {proveedor}")
-
-        config_text = "\n".join(config_info) if config_info else "Sin filtros adicionales"
-
         respuesta = QMessageBox.question(
             self,
             "Confirmar procesamiento",
             f"Se encontraron {len(zip_files)} archivo(s) ZIP.\n\n"
             f"Carpeta: {self.carpeta_entrada.name}\n\n"
-            f"Configuración:\n{config_text}\n\n"
+            f"Configuración fija: LECHE CRUDA • SPN-1 • Litros • Activa=1\n\n"
             f"¿Procesar ahora?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
