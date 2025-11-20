@@ -1,0 +1,35 @@
+{
+    "version": "2.0.0",
+    "build_date": "2025-11-20",
+    "release_notes": "
+        • Migración completa a PyQt6 con interfaz de tabs<br>
+        • Nueva interfaz moderna y responsive<br>
+        • Tab independiente para SEABOARD<br>
+        • Tab independiente para CASA DEL AGRICULTOR<br>
+        • Tab independiente para LACTALIS COMPRAS<br>
+        • Sistema de auto-actualización integrado<br>
+        • Mejor manejo de errores y logging<br>
+        • Preparado para distribución con PyInstaller
+    ",
+    "download_url": "https://github.com/InteligenciaCorreagro/bogota-sae/releases/download/v2.0.0/BogotaSAE_v2.0.0_Setup.exe",
+    "min_version_required": "1.0.0",
+    "critical_update": false,
+    "changelog": {
+        "added": [
+            "Interfaz con tabs para mejor organización",
+            "Sistema de auto-actualización",
+            "Menú de navegación completo",
+            "Atajos de teclado (Ctrl+1, Ctrl+2, Ctrl+3)",
+            "Tab específico para Lactalis Compras"
+        ],
+        "changed": [
+            "Arquitectura modular mejorada",
+            "Separación clara entre UI y lógica de negocio",
+            "Mejor manejo de errores en procesamiento"
+        ],
+        "fixed": [
+            "Corrección de rutas relativas para ejecutable",
+            "Mejoras en detección de SharePoint"
+        ]
+    }
+}

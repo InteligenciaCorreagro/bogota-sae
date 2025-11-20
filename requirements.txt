@@ -1,2 +1,7 @@
+# Dependencias principales
 PyQt6>=6.6.0
 openpyxl>=3.1.2
+
+# Dependencias opcionales para desarrollo
+# Descomenta la siguiente línea para compilar con PyInstaller
+# pyinstaller>=6.0.0

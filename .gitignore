@@ -1,7 +1,9 @@
-# PyInstaller
-/build
+# PyInstaller output
 /dist
-*.spec
+*.exe
+# Mantener build/ con configuración pero ignorar outputs
+/build/installer_output/
+*.pyc
 
 # Logs
 *.log
