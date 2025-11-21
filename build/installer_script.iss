@@ -27,7 +27,7 @@ DefaultDirName={autopf}\BogotaSAE
 DefaultGroupName=Procesador de Facturas REGGIS
 AllowNoIcons=yes
 ; LicenseFile=..\LICENSE
-InfoBeforeFile=..\README.md
+; InfoBeforeFile=..\README.md
 OutputDir=installer_output
 OutputBaseFilename=BogotaSAE_v2.0.0_Setup
 
