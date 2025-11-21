@@ -37,8 +37,8 @@ SolidCompression=yes
 
 ; Configuración visual
 WizardStyle=modern
-WizardImageFile=compiler:WizModernImage-IS.bmp
-WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
+; WizardImageFile=compiler:WizModernImage-IS.bmp
+; WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
 
 ; Configuración de privilegios
 PrivilegesRequired=admin
