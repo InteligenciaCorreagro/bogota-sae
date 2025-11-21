@@ -254,12 +254,10 @@ class MainWindow(QMainWindow):
         """Abre la carpeta donde se guardan los logs"""
         import os
         import platform
-        from pathlib import Path
+        from config.constants import get_logs_dir
 
-        # Los logs se guardan en la carpeta 'logs'
-        carpeta_logs = Path('logs')
-        if not carpeta_logs.exists():
-            carpeta_logs.mkdir(exist_ok=True)
+        # Obtener la carpeta de logs según el sistema operativo
+        carpeta_logs = get_logs_dir()
 
         try:
             if platform.system() == 'Windows':
@@ -277,9 +275,9 @@ class MainWindow(QMainWindow):
 
     def borrar_logs(self):
         """Elimina todos los archivos de log de la carpeta logs"""
-        from pathlib import Path
+        from config.constants import get_logs_dir
 
-        carpeta_logs = Path('logs')
+        carpeta_logs = get_logs_dir()
         if not carpeta_logs.exists():
             QMessageBox.information(
                 self,
@@ -333,12 +331,10 @@ class MainWindow(QMainWindow):
         """Abre la carpeta donde se guardan los archivos procesados"""
         import os
         import platform
-        from pathlib import Path
+        from config.constants import get_data_dir
 
-        # Los archivos procesados se guardan en la carpeta 'data'
-        carpeta_data = Path('data')
-        if not carpeta_data.exists():
-            carpeta_data.mkdir(exist_ok=True)
+        # Obtener la carpeta de datos según el sistema operativo
+        carpeta_data = get_data_dir()
 
         try:
             if platform.system() == 'Windows':
