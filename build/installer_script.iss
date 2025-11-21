@@ -93,10 +93,6 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\Procesador de Fact
 Filename: "{app}\BogotaSAE.exe"; Description: "{cm:LaunchProgram,Procesador de Facturas REGGIS}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// Constantes de Windows
-const
-  FILE_ATTRIBUTE_READONLY = $00000001;
-
 // Declaración de funciones de la API de Windows
 function GetFileAttributes(lpFileName: String): Cardinal;
 external 'GetFileAttributesW@kernel32.dll stdcall';
