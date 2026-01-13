@@ -27,7 +27,7 @@ DefaultDirName={autopf}\BogotaSAE
 DefaultGroupName=Procesador de Facturas REGGIS
 AllowNoIcons=yes
 ; LicenseFile=..\LICENSE
-InfoBeforeFile=..\README.md
+; InfoBeforeFile=..\README.md
 OutputDir=installer_output
 OutputBaseFilename=BogotaSAE_v2.0.0_Setup
 
@@ -37,8 +37,8 @@ SolidCompression=yes
 
 ; Configuración visual
 WizardStyle=modern
-WizardImageFile=compiler:WizModernImage-IS.bmp
-WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
+; WizardImageFile=compiler:WizModernImage-IS.bmp
+; WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
 
 ; Configuración de privilegios
 PrivilegesRequired=admin
@@ -93,10 +93,17 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\Procesador de Fact
 Filename: "{app}\BogotaSAE.exe"; Description: "{cm:LaunchProgram,Procesador de Facturas REGGIS}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// Declaración de funciones de la API de Windows
+function GetFileAttributes(lpFileName: String): Cardinal;
+external 'GetFileAttributesW@kernel32.dll stdcall';
+
+function SetFileAttributes(lpFileName: String; dwFileAttributes: Cardinal): Boolean;
+external 'SetFileAttributesW@kernel32.dll stdcall';
+
 // Función para quitar atributo de solo lectura
 procedure SetReadOnly(FileName: String; ReadOnly: Boolean);
 var
-  Attributes: Integer;
+  Attributes: Cardinal;
 begin
   Attributes := GetFileAttributes(FileName);
   if ReadOnly then

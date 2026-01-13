@@ -4,13 +4,12 @@ Configuración de logging para la aplicación
 
 import logging
 from datetime import datetime
-from pathlib import Path
+from .constants import get_logs_dir
 
 def setup_logging():
     """Configura el sistema de logging"""
-    # Crear carpeta logs si no existe
-    logs_dir = Path('logs')
-    logs_dir.mkdir(exist_ok=True)
+    # Obtener carpeta logs en ubicación apropiada según el sistema operativo
+    logs_dir = get_logs_dir()
 
     log_file = logs_dir / f'procesamiento_facturas_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 

@@ -2,6 +2,7 @@
 Constantes y configuración para el procesador de facturas
 """
 
+import os
 from pathlib import Path
 from datetime import datetime
 
@@ -78,6 +79,79 @@ LACTALIS_CONFIG = {
     'principal': 'C',  # Lactalis como Comprador
 }
 
+LACTALIS_VENTAS_CONFIG = {
+    # IMPORTANTE: El vendedor se detecta AUTOMÁTICAMENTE del XML
+    # No se usan valores fijos para NIT ni nombre del vendedor
+    
+    # Vendedores posibles en los XMLs:
+    # 1. Lactalis: 
+    #    - NIT: 800245795
+    #    - Nombre: LACTALIS COLOMBIA S.A.S
+    # 
+    # 2. Proleche:
+    #    - NIT: 890903711
+    #    - Nombre: PROCESADORA DE LECHES S.A. - PROLECHE S.A.
+    
+    # Valores por defecto para campos fijos
+    'activa_factura': '1',
+    'activa_bodega': '1',
+    'principal': 'V',  # Siempre Venta (vendedor)
+    
+    # Tamaño de lote para procesamiento (optimizado para 20k+ archivos)
+    'batch_size': 500,  # Procesar en lotes de 500 archivos
+}
+
+def get_app_data_dir() -> Path:
+    """
+    Retorna el directorio base para datos de la aplicación según el sistema operativo.
+    En Windows usa APPDATA para evitar problemas de permisos en Program Files.
+
+    Returns:
+        Path al directorio base de datos de la aplicación
+    """
+    if os.name == 'nt':  # Windows
+        # Usar APPDATA en Windows para tener permisos de escritura
+        appdata = Path(os.environ.get('APPDATA', '.'))
+        app_dir = appdata / 'BogotaSAE'
+    else:
+        # En otros sistemas, usar directorio actual
+        app_dir = Path('.')
+
+    app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
+
+
+def get_logs_dir() -> Path:
+    """
+    Retorna el directorio para logs de la aplicación.
+
+    Returns:
+        Path al directorio de logs
+    """
+    if os.name == 'nt':  # Windows
+        logs_dir = get_app_data_dir() / 'logs'
+    else:
+        logs_dir = Path('logs')
+
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return logs_dir
+
+
+def get_data_dir() -> Path:
+    """
+    Retorna el directorio base para archivos procesados.
+
+    Returns:
+        Path al directorio de datos
+    """
+    if os.name == 'nt':  # Windows
+        data_dir = get_app_data_dir() / 'data'
+    else:
+        data_dir = Path('data')
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
 
 def get_data_output_path(subfolder: str = "") -> Path:
     """
@@ -90,9 +164,8 @@ def get_data_output_path(subfolder: str = "") -> Path:
     Returns:
         Path a la carpeta de salida
     """
-    # Carpeta base de datos
-    data_dir = Path('data')
-    data_dir.mkdir(exist_ok=True)
+    # Carpeta base de datos (usa la función helper para ubicación correcta)
+    data_dir = get_data_dir()
 
     # Carpeta con fecha de hoy
     today = datetime.now().strftime('%Y-%m-%d')

@@ -1,8 +1,8 @@
 {
     "version": "2.0.0",
     "build_date": "2025-11-20",
-    "release_notes": "
-        • Migración completa a PyQt6 con interfaz de tabs<br>
+    "release_notes": 
+    "    • Migración completa a PyQt6 con interfaz de tabs<br>
         • Nueva interfaz moderna y responsive<br>
         • Tab independiente para SEABOARD<br>
         • Tab independiente para CASA DEL AGRICULTOR<br>

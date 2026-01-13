@@ -13,7 +13,7 @@ from PyQt6.QtGui import QFont, QAction, QIcon
 
 from core.version import __version__, APP_NAME, get_version_string
 from core.updater import Updater
-from ui.tabs import TabSeaboard, TabCasaAgricultor, TabLactalisCompras
+from ui.tabs import TabCasaAgricultor, TabSeaboard, TabLactalisCompras, TabLactalisVentas
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +90,13 @@ class MainWindow(QMainWindow):
         # Crear y agregar tabs
         self.tab_seaboard = TabSeaboard()
         self.tab_casa = TabCasaAgricultor()
-        self.tab_lactalis = TabLactalisCompras()
+        self.tab_lactalis_compras = TabLactalisCompras()
+        self.tab_lactalis_ventas = TabLactalisVentas()
 
         self.tab_widget.addTab(self.tab_seaboard, "🌐 SEABOARD")
         self.tab_widget.addTab(self.tab_casa, "🌾 CASA DEL AGRICULTOR")
-        self.tab_widget.addTab(self.tab_lactalis, "🥛 LACTALIS COMPRAS")
+        self.tab_widget.addTab(self.tab_lactalis_compras, "🥛 LACTALIS COMPRAS")
+        self.tab_widget.addTab(self.tab_lactalis_ventas, "💰 LACTALIS VENTAS")
 
         main_layout.addWidget(self.tab_widget)
 
@@ -200,11 +202,17 @@ class MainWindow(QMainWindow):
         accion_tab_casa.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
         menu_vista.addAction(accion_tab_casa)
 
-        # Acción: Cambiar a tab LACTALIS
-        accion_tab_lactalis = QAction("&LACTALIS COMPRAS", self)
-        accion_tab_lactalis.setShortcut("Ctrl+3")
-        accion_tab_lactalis.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
-        menu_vista.addAction(accion_tab_lactalis)
+        # Acción: Cambiar a tab LACTALIS COMPRAS
+        accion_tab_lactalis_compras = QAction("LACTALIS &COMPRAS", self)
+        accion_tab_lactalis_compras.setShortcut("Ctrl+3")
+        accion_tab_lactalis_compras.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        menu_vista.addAction(accion_tab_lactalis_compras)
+
+        # Acción: Cambiar a tab LACTALIS VENTAS
+        accion_tab_lactalis_ventas = QAction("LACTALIS &VENTAS", self)
+        accion_tab_lactalis_ventas.setShortcut("Ctrl+4")
+        accion_tab_lactalis_ventas.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
+        menu_vista.addAction(accion_tab_lactalis_ventas)
 
         # --- Menú Ayuda ---
         menu_ayuda = menubar.addMenu("A&yuda")
@@ -254,12 +262,10 @@ class MainWindow(QMainWindow):
         """Abre la carpeta donde se guardan los logs"""
         import os
         import platform
-        from pathlib import Path
+        from config.constants import get_logs_dir
 
-        # Los logs se guardan en la carpeta 'logs'
-        carpeta_logs = Path('logs')
-        if not carpeta_logs.exists():
-            carpeta_logs.mkdir(exist_ok=True)
+        # Obtener la carpeta de logs según el sistema operativo
+        carpeta_logs = get_logs_dir()
 
         try:
             if platform.system() == 'Windows':
@@ -277,9 +283,9 @@ class MainWindow(QMainWindow):
 
     def borrar_logs(self):
         """Elimina todos los archivos de log de la carpeta logs"""
-        from pathlib import Path
+        from config.constants import get_logs_dir
 
-        carpeta_logs = Path('logs')
+        carpeta_logs = get_logs_dir()
         if not carpeta_logs.exists():
             QMessageBox.information(
                 self,
@@ -333,12 +339,10 @@ class MainWindow(QMainWindow):
         """Abre la carpeta donde se guardan los archivos procesados"""
         import os
         import platform
-        from pathlib import Path
+        from config.constants import get_data_dir
 
-        # Los archivos procesados se guardan en la carpeta 'data'
-        carpeta_data = Path('data')
-        if not carpeta_data.exists():
-            carpeta_data.mkdir(exist_ok=True)
+        # Obtener la carpeta de datos según el sistema operativo
+        carpeta_data = get_data_dir()
 
         try:
             if platform.system() == 'Windows':
@@ -369,6 +373,7 @@ para múltiples clientes.</p>
     <li>SEABOARD - Procesamiento desde SharePoint/Local</li>
     <li>CASA DEL AGRICULTOR - Procesamiento desde archivos ZIP</li>
     <li>LACTALIS COMPRAS - Procesamiento de facturas de compra</li>
+    <li>LACTALIS VENTAS - Procesamiento de facturas de venta (Lactalis/Proleche)</li>
 </ul>
 
 <p><b>Tecnologías:</b></p>
@@ -378,7 +383,7 @@ para múltiples clientes.</p>
     <li>openpyxl - Manipulación de Excel</li>
 </ul>
 
-<p><b>Desarrollado por:</b> Sistema REGGIS</p>
+<p><b>Desarrollado por:</b> Sistema REGGIS - CORREAGRO S.A.</p>
         """.strip()
 
         QMessageBox.about(self, "Acerca de", mensaje)
@@ -403,7 +408,16 @@ para múltiples clientes.</p>
     <li><b>Ctrl+1:</b> Cambiar a tab SEABOARD</li>
     <li><b>Ctrl+2:</b> Cambiar a tab CASA DEL AGRICULTOR</li>
     <li><b>Ctrl+3:</b> Cambiar a tab LACTALIS COMPRAS</li>
+    <li><b>Ctrl+4:</b> Cambiar a tab LACTALIS VENTAS</li>
     <li><b>Ctrl+Q:</b> Salir de la aplicación</li>
+</ul>
+
+<p><b>LACTALIS VENTAS:</b></p>
+<ul>
+    <li>Procesa facturas de <b>Lactalis</b> (NIT 800245795) y <b>Proleche</b> (NIT 890903711)</li>
+    <li>Detecta automáticamente el vendedor del XML</li>
+    <li>Soporta grandes volúmenes (20,000+ archivos)</li>
+    <li>Validaciones estrictas de reglas de negocio</li>
 </ul>
 
 <p><b>Más información:</b><br>
