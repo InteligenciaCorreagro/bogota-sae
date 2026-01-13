@@ -12,12 +12,14 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QPushButton, QProgressBar, QFileDialog,
-                              QMessageBox, QGroupBox, QTextEdit)
+                              QMessageBox, QGroupBox, QTextEdit, QCheckBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from src.config.constants import REGGIS_HEADERS
 from processors.lactalis_ventas_processor import ProcesadorLactalisVentas
+from src.database.lactalis_database import LactalisDatabase
+from src.database.excel_importer import ExcelImporter, ExcelImporterError
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,7 @@ class TabLactalisVentas(QWidget):
         super().__init__()
         self.carpeta_entrada = None
         self.procesamiento_thread = None
+        self.db = LactalisDatabase()
         self.setup_ui()
 
     def setup_ui(self):
@@ -88,6 +91,96 @@ class TabLactalisVentas(QWidget):
         descripcion.setStyleSheet("color: #555; padding: 5px;")
         descripcion.setWordWrap(True)
         main_layout.addWidget(descripcion)
+
+        # --- Group Box: Gestión de Base de Datos ---
+        group_db = QGroupBox("🗄️ Gestión de Base de Datos")
+        group_db.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        db_layout = QVBoxLayout()
+        db_layout.setSpacing(10)
+
+        # Info de BD
+        db_info = QLabel(
+            f"Base de datos: {self.db.db_path}\n"
+            f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
+        )
+        db_info.setFont(QFont("Arial", 9))
+        db_info.setStyleSheet("color: #34495e; padding: 5px;")
+        db_info.setWordWrap(True)
+        db_layout.addWidget(db_info)
+        self.db_info_label = db_info
+
+        # Botones de importación horizontal
+        btn_layout = QHBoxLayout()
+
+        # Botón importar materiales
+        btn_importar_materiales = QPushButton("📦 Importar Materiales")
+        btn_importar_materiales.setMinimumHeight(40)
+        btn_importar_materiales.setFont(QFont("Arial", 10))
+        btn_importar_materiales.setStyleSheet("""
+            QPushButton {
+                background-color: #16a085;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #138d75;
+            }
+        """)
+        btn_importar_materiales.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_importar_materiales.clicked.connect(self.importar_materiales)
+        btn_layout.addWidget(btn_importar_materiales)
+
+        # Botón importar clientes
+        btn_importar_clientes = QPushButton("👥 Importar Clientes")
+        btn_importar_clientes.setMinimumHeight(40)
+        btn_importar_clientes.setFont(QFont("Arial", 10))
+        btn_importar_clientes.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #21618c;
+            }
+        """)
+        btn_importar_clientes.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_importar_clientes.clicked.connect(self.importar_clientes)
+        btn_layout.addWidget(btn_importar_clientes)
+
+        db_layout.addLayout(btn_layout)
+
+        # Nota sobre formato
+        formato_note = QLabel(
+            "💡 Materiales: CODIGO, DESCRIPCION, SOCIEDAD\n"
+            "💡 Clientes: Cód.Padre, Nombre Código Padre, NIT (si dice 'no nit' no se registra)"
+        )
+        formato_note.setFont(QFont("Arial", 8))
+        formato_note.setStyleSheet("color: #7f8c8d; padding: 5px;")
+        formato_note.setWordWrap(True)
+        db_layout.addWidget(formato_note)
+
+        # Checkboxes para validaciones
+        validaciones_layout = QHBoxLayout()
+
+        self.checkbox_validar_materiales = QCheckBox("✓ Validar materiales contra BD")
+        self.checkbox_validar_materiales.setFont(QFont("Arial", 9))
+        self.checkbox_validar_materiales.setStyleSheet("color: #2c3e50;")
+        validaciones_layout.addWidget(self.checkbox_validar_materiales)
+
+        self.checkbox_validar_clientes = QCheckBox("✓ Validar clientes contra BD")
+        self.checkbox_validar_clientes.setFont(QFont("Arial", 9))
+        self.checkbox_validar_clientes.setStyleSheet("color: #2c3e50;")
+        validaciones_layout.addWidget(self.checkbox_validar_clientes)
+
+        db_layout.addLayout(validaciones_layout)
+
+        group_db.setLayout(db_layout)
+        main_layout.addWidget(group_db)
 
         # --- Group Box: Reglas de Negocio ---
         group_reglas = QGroupBox("📋 Reglas de Validación")
@@ -322,11 +415,18 @@ class TabLactalisVentas(QWidget):
         # Obtener plantilla
         plantilla = self.buscar_o_crear_plantilla()
 
-        # Crear procesador con callback de progreso
+        # Obtener estado de checkboxes
+        validar_materiales = self.checkbox_validar_materiales.isChecked()
+        validar_clientes = self.checkbox_validar_clientes.isChecked()
+
+        # Crear procesador con callback de progreso y validaciones
         procesador = ProcesadorLactalisVentas(
             self.carpeta_entrada,
             plantilla,
-            progress_callback=self.actualizar_progreso
+            progress_callback=self.actualizar_progreso,
+            database=self.db,
+            validar_materiales=validar_materiales,
+            validar_clientes=validar_clientes
         )
 
         # Iniciar thread de procesamiento
@@ -379,10 +479,149 @@ class TabLactalisVentas(QWidget):
                 f"Ocurrió un error durante el procesamiento:\n\n{message}"
             )
 
+    def importar_materiales(self):
+        """Importa materiales desde un archivo Excel"""
+        archivo, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar archivo Excel de Materiales",
+            "",
+            "Excel Files (*.xlsx *.xls)"
+        )
+
+        if not archivo:
+            return
+
+        try:
+            # Validar formato del archivo
+            es_valido, mensaje = ExcelImporter.validar_archivo_materiales(archivo)
+            if not es_valido:
+                QMessageBox.critical(
+                    self,
+                    "Formato inválido",
+                    f"El archivo no tiene el formato correcto:\n\n{mensaje}\n\n"
+                    f"Se esperan los encabezados: CODIGO, DESCRIPCION, SOCIEDAD"
+                )
+                return
+
+            # Importar materiales
+            materiales = ExcelImporter.importar_materiales_desde_excel(archivo)
+
+            if not materiales:
+                QMessageBox.warning(
+                    self,
+                    "Sin datos",
+                    "No se encontraron materiales para importar"
+                )
+                return
+
+            # Guardar en base de datos
+            nuevos, existentes, errores = self.db.importar_materiales(materiales)
+
+            # Actualizar label de info
+            self.db_info_label.setText(
+                f"Base de datos: {self.db.db_path}\n"
+                f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
+            )
+
+            # Mostrar resultado
+            QMessageBox.information(
+                self,
+                "Importación completada",
+                f"Materiales importados:\n\n"
+                f"✓ Nuevos: {nuevos}\n"
+                f"⊙ Ya existentes: {existentes}\n"
+                f"✗ Errores: {errores}\n\n"
+                f"Total en BD: {self.db.contar_materiales()}"
+            )
+
+        except ExcelImporterError as e:
+            QMessageBox.critical(
+                self,
+                "Error de importación",
+                f"Error importando materiales:\n\n{str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"Error importando materiales: {str(e)}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error inesperado:\n\n{str(e)}"
+            )
+
+    def importar_clientes(self):
+        """Importa clientes desde un archivo Excel"""
+        archivo, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar archivo Excel de Clientes",
+            "",
+            "Excel Files (*.xlsx *.xls)"
+        )
+
+        if not archivo:
+            return
+
+        try:
+            # Validar formato del archivo
+            es_valido, mensaje = ExcelImporter.validar_archivo_clientes(archivo)
+            if not es_valido:
+                QMessageBox.critical(
+                    self,
+                    "Formato inválido",
+                    f"El archivo no tiene el formato correcto:\n\n{mensaje}\n\n"
+                    f"Se esperan los encabezados: Cód.Padre, Nombre Código Padre, NIT"
+                )
+                return
+
+            # Importar clientes
+            clientes = ExcelImporter.importar_clientes_desde_excel(archivo)
+
+            if not clientes:
+                QMessageBox.warning(
+                    self,
+                    "Sin datos",
+                    "No se encontraron clientes para importar"
+                )
+                return
+
+            # Guardar en base de datos
+            nuevos, existentes, errores = self.db.importar_clientes(clientes)
+
+            # Actualizar label de info
+            self.db_info_label.setText(
+                f"Base de datos: {self.db.db_path}\n"
+                f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
+            )
+
+            # Mostrar resultado
+            QMessageBox.information(
+                self,
+                "Importación completada",
+                f"Clientes importados:\n\n"
+                f"✓ Nuevos: {nuevos}\n"
+                f"⊙ Ya existentes: {existentes}\n"
+                f"✗ Errores/rechazados: {errores}\n\n"
+                f"Total en BD: {self.db.contar_clientes()}\n\n"
+                f"Nota: Los clientes con 'no nit' no se registran"
+            )
+
+        except ExcelImporterError as e:
+            QMessageBox.critical(
+                self,
+                "Error de importación",
+                f"Error importando clientes:\n\n{str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"Error importando clientes: {str(e)}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error inesperado:\n\n{str(e)}"
+            )
+
     def abrir_carpeta(self, carpeta: Path):
         """
         Abre la carpeta de resultados en el explorador del sistema
-        
+
         Args:
             carpeta: Path a la carpeta a abrir
         """

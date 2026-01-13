@@ -14,6 +14,11 @@ from datetime import datetime
 from src.config.constants import REGGIS_HEADERS, LACTALIS_VENTAS_CONFIG, get_data_output_path
 from extractors.lactalis_ventas_extractor import FacturaExtractorLactalisVentas, ValidacionFacturaError
 
+try:
+    from src.database.lactalis_database import LactalisDatabase
+except ImportError:
+    LactalisDatabase = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,21 +33,28 @@ class ProcesadorLactalisVentas:
     4. Manejo eficiente de memoria
     """
 
-    def __init__(self, carpeta_archivos: Path, plantilla_excel: Path, 
-                 progress_callback=None):
+    def __init__(self, carpeta_archivos: Path, plantilla_excel: Path,
+                 progress_callback=None, database: 'LactalisDatabase' = None,
+                 validar_materiales: bool = False, validar_clientes: bool = False):
         """
         Inicializa el procesador
-        
+
         Args:
             carpeta_archivos: Path a carpeta con archivos ZIP y/o XML
             plantilla_excel: Path a plantilla Excel base
             progress_callback: Callback opcional para reportar progreso (recibe: processed, total, message)
+            database: Instancia de LactalisDatabase para validaciones (opcional)
+            validar_materiales: Si True, valida que los materiales existan en la BD
+            validar_clientes: Si True, valida que los clientes existan en la BD
         """
         self.carpeta_archivos = carpeta_archivos
         self.plantilla_excel = plantilla_excel
         self.carpeta_salida = None
         self.progress_callback = progress_callback
-        
+        self.database = database
+        self.validar_materiales = validar_materiales
+        self.validar_clientes = validar_clientes
+
         # Estadísticas
         self.stats = {
             'total_archivos': 0,
@@ -52,6 +64,8 @@ class ProcesadorLactalisVentas:
             'otros_documentos': 0,
             'lineas_validas': 0,
             'lineas_rechazadas': 0,
+            'materiales_invalidos': 0,
+            'clientes_invalidos': 0,
             'archivos_error': 0,
             'tiempo_inicio': None,
             'tiempo_fin': None,
@@ -153,9 +167,20 @@ class ProcesadorLactalisVentas:
                 archivos_procesados += 1
                 # CONTINUAR con el siguiente archivo
 
-        self.stats['lineas_validas'] = len(todas_lineas)
         self.stats['tiempo_fin'] = datetime.now()
-        
+
+        # Aplicar validaciones de base de datos si están habilitadas
+        lineas_antes_validacion = len(todas_lineas)
+        todas_lineas = self._filtrar_lineas_validas(todas_lineas)
+        self.stats['lineas_validas'] = len(todas_lineas)
+
+        if self.database and (self.validar_materiales or self.validar_clientes):
+            logger.info(
+                f"Validación BD: {lineas_antes_validacion} líneas -> "
+                f"{len(todas_lineas)} válidas, "
+                f"{lineas_antes_validacion - len(todas_lineas)} rechazadas"
+            )
+
         # Mostrar estadísticas
         self._mostrar_estadisticas()
 
@@ -174,13 +199,13 @@ class ProcesadorLactalisVentas:
 
         # Crear carpeta de salida y escribir Excel
         self.carpeta_salida = self.crear_carpeta_salida()
-        
+
         self._reportar_progreso(
             total_archivos,
             total_archivos,
             f"Escribiendo Excel con {len(todas_lineas)} líneas..."
         )
-        
+
         archivo_salida = self.escribir_reggis(todas_lineas)
 
         logger.info(f"=" * 80)
@@ -192,7 +217,7 @@ class ProcesadorLactalisVentas:
     def _mostrar_estadisticas(self):
         """Muestra estadísticas detalladas del procesamiento"""
         tiempo_total = self.stats['tiempo_fin'] - self.stats['tiempo_inicio']
-        
+
         logger.info(f"")
         logger.info(f"=" * 80)
         logger.info(f"ESTADÍSTICAS DE PROCESAMIENTO - LACTALIS VENTAS")
@@ -207,13 +232,22 @@ class ProcesadorLactalisVentas:
         logger.info(f"Líneas procesadas:")
         logger.info(f"  • Líneas válidas: {self.stats['lineas_validas']}")
         logger.info(f"  • Líneas rechazadas: {self.stats['lineas_rechazadas']}")
+
+        if self.database and (self.validar_materiales or self.validar_clientes):
+            logger.info(f"")
+            logger.info(f"Validaciones de base de datos:")
+            if self.validar_materiales:
+                logger.info(f"  • Materiales inválidos: {self.stats['materiales_invalidos']}")
+            if self.validar_clientes:
+                logger.info(f"  • Clientes inválidos: {self.stats['clientes_invalidos']}")
+
         logger.info(f"")
         logger.info(f"Tiempo total: {tiempo_total}")
-        
+
         if self.stats['total_archivos'] > 0:
             promedio = tiempo_total.total_seconds() / self.stats['total_archivos']
             logger.info(f"Promedio por archivo: {promedio:.3f} segundos")
-        
+
         logger.info(f"=" * 80)
 
     def procesar_xml(self, xml_path: Path) -> List[Dict]:
@@ -421,11 +455,71 @@ class ProcesadorLactalisVentas:
     def crear_carpeta_salida(self) -> Path:
         """
         Crea la carpeta de salida para los resultados en data/YYYY-MM-DD/
-        
+
         Returns:
             Path a la carpeta de salida
         """
         return get_data_output_path()
+
+    def _validar_linea_con_bd(self, linea: Dict) -> Tuple[bool, str]:
+        """
+        Valida una línea contra la base de datos
+
+        Args:
+            linea: Diccionario con datos de la línea
+
+        Returns:
+            Tupla (es_valida, mensaje_error)
+        """
+        if not self.database:
+            return True, ""
+
+        # Validar material
+        if self.validar_materiales:
+            codigo = linea.get('codigo_subyacente', '')
+            # Extraer sociedad del NIT del vendedor
+            sociedad = linea.get('nit_vendedor', '')
+
+            if not self.database.validar_material(codigo, sociedad):
+                mensaje = f"Material no registrado: {codigo} (Sociedad: {sociedad})"
+                logger.warning(mensaje)
+                self.stats['materiales_invalidos'] += 1
+                return False, mensaje
+
+        # Validar cliente
+        if self.validar_clientes:
+            nit_comprador = linea.get('nit_comprador', '')
+
+            if not self.database.validar_cliente(nit_comprador):
+                mensaje = f"Cliente no registrado: {nit_comprador}"
+                logger.warning(mensaje)
+                self.stats['clientes_invalidos'] += 1
+                return False, mensaje
+
+        return True, ""
+
+    def _filtrar_lineas_validas(self, lineas: List[Dict]) -> List[Dict]:
+        """
+        Filtra líneas validándolas contra la base de datos
+
+        Args:
+            lineas: Lista de líneas a validar
+
+        Returns:
+            Lista de líneas válidas
+        """
+        if not self.database or (not self.validar_materiales and not self.validar_clientes):
+            return lineas
+
+        lineas_validas = []
+        for linea in lineas:
+            es_valida, mensaje = self._validar_linea_con_bd(linea)
+            if es_valida:
+                lineas_validas.append(linea)
+            else:
+                self.stats['lineas_rechazadas'] += 1
+
+        return lineas_validas
 
     def escribir_reggis(self, lineas: List[Dict]) -> Path:
         """
