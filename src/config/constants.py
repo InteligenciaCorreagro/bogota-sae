@@ -79,6 +79,27 @@ LACTALIS_CONFIG = {
     'principal': 'C',  # Lactalis como Comprador
 }
 
+LACTALIS_VENTAS_CONFIG = {
+    # IMPORTANTE: El vendedor se detecta AUTOMÁTICAMENTE del XML
+    # No se usan valores fijos para NIT ni nombre del vendedor
+    
+    # Vendedores posibles en los XMLs:
+    # 1. Lactalis: 
+    #    - NIT: 800245795
+    #    - Nombre: LACTALIS COLOMBIA S.A.S
+    # 
+    # 2. Proleche:
+    #    - NIT: 890903711
+    #    - Nombre: PROCESADORA DE LECHES S.A. - PROLECHE S.A.
+    
+    # Valores por defecto para campos fijos
+    'activa_factura': '1',
+    'activa_bodega': '1',
+    'principal': 'V',  # Siempre Venta (vendedor)
+    
+    # Tamaño de lote para procesamiento (optimizado para 20k+ archivos)
+    'batch_size': 500,  # Procesar en lotes de 500 archivos
+}
 
 def get_app_data_dir() -> Path:
     """
