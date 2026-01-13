@@ -3,7 +3,7 @@ Utilidad para importar materiales y clientes desde archivos Excel
 Valida los encabezados y formatos antes de importar
 """
 
-import pandas as pd
+import openpyxl
 import logging
 from typing import List, Dict, Tuple
 from pathlib import Path
@@ -73,41 +73,45 @@ class ExcelImporter:
 
             # Leer el archivo Excel
             logger.info(f"Leyendo archivo de materiales: {archivo_path}")
-            df = pd.read_excel(archivo_path, sheet_name=0)
+            wb = openpyxl.load_workbook(archivo_path, read_only=True)
+            ws = wb.active
 
-            # Validar que no esté vacío
-            if df.empty:
+            # Leer encabezados (primera fila)
+            headers_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            if not headers_row:
                 raise ExcelImporterError("El archivo está vacío")
 
-            # Normalizar nombres de columnas (eliminar espacios, convertir a mayúsculas)
-            df.columns = df.columns.str.strip()
-
-            # Validar encabezados
-            headers_originales = df.columns.tolist()
+            # Normalizar encabezados
+            headers_originales = [str(h).strip() if h else '' for h in headers_row]
             logger.debug(f"Encabezados encontrados: {headers_originales}")
 
-            # Intentar mapear encabezados con variantes
-            df_renamed = df.copy()
+            # Mapear encabezados con variantes
             columnas_mapeadas = {}
-
-            for col in df_renamed.columns:
+            headers_normalizados = []
+            for col in headers_originales:
                 col_lower = col.lower().strip()
                 if col_lower in ExcelImporter.MATERIALES_HEADERS_VARIANTS:
-                    columnas_mapeadas[col] = ExcelImporter.MATERIALES_HEADERS_VARIANTS[col_lower]
+                    col_normalizado = ExcelImporter.MATERIALES_HEADERS_VARIANTS[col_lower]
+                    columnas_mapeadas[col] = col_normalizado
+                    headers_normalizados.append(col_normalizado)
+                else:
+                    headers_normalizados.append(col)
 
             if columnas_mapeadas:
-                df_renamed.rename(columns=columnas_mapeadas, inplace=True)
                 logger.info(f"Columnas normalizadas: {columnas_mapeadas}")
 
-            # Verificar que todos los encabezados requeridos estén presentes
-            headers_actuales = df_renamed.columns.tolist()
-            headers_faltantes = [h for h in ExcelImporter.MATERIALES_HEADERS if h not in headers_actuales]
-
+            # Verificar encabezados requeridos
+            headers_faltantes = [h for h in ExcelImporter.MATERIALES_HEADERS if h not in headers_normalizados]
             if headers_faltantes:
                 raise ExcelImporterError(
                     f"Encabezados faltantes: {headers_faltantes}. "
                     f"Se esperan: {ExcelImporter.MATERIALES_HEADERS}"
                 )
+
+            # Obtener índices de columnas
+            idx_codigo = headers_normalizados.index('CODIGO')
+            idx_descripcion = headers_normalizados.index('DESCRIPCION')
+            idx_sociedad = headers_normalizados.index('SOCIEDAD')
 
             # Mapeo de nombres de empresas a NITs
             SOCIEDAD_MAP = {
@@ -117,12 +121,16 @@ class ExcelImporter:
                 'procesadora de leches': '890903711',
             }
 
-            # Convertir a lista de diccionarios
+            # Leer datos (desde fila 2 en adelante)
             materiales = []
-            for idx, row in df_renamed.iterrows():
-                codigo = str(row['CODIGO']).strip() if pd.notna(row['CODIGO']) else ''
-                descripcion = str(row['DESCRIPCION']).strip() if pd.notna(row['DESCRIPCION']) else ''
-                sociedad_raw = str(row['SOCIEDAD']).strip() if pd.notna(row['SOCIEDAD']) else ''
+            for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                    continue  # Saltar filas vacías
+
+                # Extraer valores
+                codigo = str(row[idx_codigo]).strip() if row[idx_codigo] is not None else ''
+                descripcion = str(row[idx_descripcion]).strip() if row[idx_descripcion] is not None else ''
+                sociedad_raw = str(row[idx_sociedad]).strip() if row[idx_sociedad] is not None else ''
 
                 # Convertir nombre de empresa a NIT
                 sociedad_lower = sociedad_raw.lower()
@@ -132,7 +140,7 @@ class ExcelImporter:
                 if sociedad_nit == sociedad_raw and not sociedad_raw.isdigit():
                     if sociedad_raw:  # Solo advertir si no está vacío
                         logger.warning(
-                            f"Fila {idx+2}: Sociedad '{sociedad_raw}' no reconocida. "
+                            f"Fila {row_num}: Sociedad '{sociedad_raw}' no reconocida. "
                             f"Se esperaba 'Parmalat' o 'Proleche'. Se usará tal cual."
                         )
 
@@ -146,11 +154,12 @@ class ExcelImporter:
                 if material['codigo'] or material['descripcion'] or material['sociedad']:
                     materiales.append(material)
 
+            wb.close()
             logger.info(f"Materiales extraídos: {len(materiales)}")
             return materiales
 
-        except pd.errors.EmptyDataError:
-            raise ExcelImporterError("El archivo está vacío o no se pudo leer")
+        except ExcelImporterError:
+            raise
         except Exception as e:
             logger.error(f"Error importando materiales: {str(e)}")
             raise ExcelImporterError(f"Error leyendo archivo: {str(e)}")
@@ -176,60 +185,73 @@ class ExcelImporter:
 
             # Leer el archivo Excel
             logger.info(f"Leyendo archivo de clientes: {archivo_path}")
-            df = pd.read_excel(archivo_path, sheet_name=0)
+            wb = openpyxl.load_workbook(archivo_path, read_only=True)
+            ws = wb.active
 
-            # Validar que no esté vacío
-            if df.empty:
+            # Leer encabezados (primera fila)
+            headers_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            if not headers_row:
                 raise ExcelImporterError("El archivo está vacío")
 
-            # Normalizar nombres de columnas
-            df.columns = df.columns.str.strip()
-
-            # Validar encabezados
-            headers_originales = df.columns.tolist()
+            # Normalizar encabezados
+            headers_originales = [str(h).strip() if h else '' for h in headers_row]
             logger.debug(f"Encabezados encontrados: {headers_originales}")
 
-            # Intentar mapear encabezados con variantes
-            df_renamed = df.copy()
+            # Mapear encabezados con variantes
             columnas_mapeadas = {}
-
-            for col in df_renamed.columns:
+            headers_normalizados = []
+            for col in headers_originales:
                 col_lower = col.lower().strip()
                 if col_lower in ExcelImporter.CLIENTES_HEADERS_VARIANTS:
-                    columnas_mapeadas[col] = ExcelImporter.CLIENTES_HEADERS_VARIANTS[col_lower]
+                    col_normalizado = ExcelImporter.CLIENTES_HEADERS_VARIANTS[col_lower]
+                    columnas_mapeadas[col] = col_normalizado
+                    headers_normalizados.append(col_normalizado)
+                else:
+                    headers_normalizados.append(col)
 
             if columnas_mapeadas:
-                df_renamed.rename(columns=columnas_mapeadas, inplace=True)
                 logger.info(f"Columnas normalizadas: {columnas_mapeadas}")
 
-            # Verificar que todos los encabezados requeridos estén presentes
-            headers_actuales = df_renamed.columns.tolist()
-            headers_faltantes = [h for h in ExcelImporter.CLIENTES_HEADERS if h not in headers_actuales]
-
+            # Verificar encabezados requeridos
+            headers_faltantes = [h for h in ExcelImporter.CLIENTES_HEADERS if h not in headers_normalizados]
             if headers_faltantes:
                 raise ExcelImporterError(
                     f"Encabezados faltantes: {headers_faltantes}. "
                     f"Se esperan: {ExcelImporter.CLIENTES_HEADERS}"
                 )
 
-            # Convertir a lista de diccionarios
+            # Obtener índices de columnas
+            idx_cod_padre = headers_normalizados.index('Cód.Padre')
+            idx_nombre = headers_normalizados.index('Nombre Código Padre')
+            idx_nit = headers_normalizados.index('NIT')
+
+            # Leer datos (desde fila 2 en adelante)
             clientes = []
-            for idx, row in df_renamed.iterrows():
+            for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if not row or all(cell is None or str(cell).strip() == '' for cell in row):
+                    continue  # Saltar filas vacías
+
+                # Extraer valores
+                cod_padre = str(row[idx_cod_padre]).strip() if row[idx_cod_padre] is not None else ''
+                nombre = str(row[idx_nombre]).strip() if row[idx_nombre] is not None else ''
+                nit = str(row[idx_nit]).strip() if row[idx_nit] is not None else ''
+
                 cliente = {
-                    'cod_padre': str(row['Cód.Padre']).strip() if pd.notna(row['Cód.Padre']) else '',
-                    'nombre_codigo_padre': str(row['Nombre Código Padre']).strip() if pd.notna(row['Nombre Código Padre']) else '',
-                    'nit': str(row['NIT']).strip() if pd.notna(row['NIT']) else ''
+                    'cod_padre': cod_padre,
+                    'nombre_codigo_padre': nombre,
+                    'nit': nit
                 }
 
                 # Filtrar filas vacías
                 if cliente['cod_padre'] or cliente['nombre_codigo_padre']:
                     clientes.append(cliente)
 
+            wb.close()
             logger.info(f"Clientes extraídos: {len(clientes)}")
             return clientes
 
-        except pd.errors.EmptyDataError:
-            raise ExcelImporterError("El archivo está vacío o no se pudo leer")
+        except ExcelImporterError:
+            raise
         except Exception as e:
             logger.error(f"Error importando clientes: {str(e)}")
             raise ExcelImporterError(f"Error leyendo archivo: {str(e)}")
@@ -249,18 +271,32 @@ class ExcelImporter:
             if not Path(archivo_path).exists():
                 return False, f"Archivo no encontrado: {archivo_path}"
 
-            df = pd.read_excel(archivo_path, sheet_name=0, nrows=0)
-            df.columns = df.columns.str.strip()
+            wb = openpyxl.load_workbook(archivo_path, read_only=True)
+            ws = wb.active
+
+            # Leer solo encabezados
+            headers_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            if not headers_row:
+                wb.close()
+                return False, "El archivo está vacío"
+
+            headers_originales = [str(h).strip() if h else '' for h in headers_row]
 
             # Intentar mapear encabezados
             columnas_mapeadas = {}
-            for col in df.columns:
+            headers_normalizados = []
+            for col in headers_originales:
                 col_lower = col.lower().strip()
                 if col_lower in ExcelImporter.MATERIALES_HEADERS_VARIANTS:
-                    columnas_mapeadas[col] = ExcelImporter.MATERIALES_HEADERS_VARIANTS[col_lower]
+                    col_normalizado = ExcelImporter.MATERIALES_HEADERS_VARIANTS[col_lower]
+                    columnas_mapeadas[col] = col_normalizado
+                    headers_normalizados.append(col_normalizado)
+                else:
+                    headers_normalizados.append(col)
 
-            headers_actuales = [columnas_mapeadas.get(col, col) for col in df.columns]
-            headers_faltantes = [h for h in ExcelImporter.MATERIALES_HEADERS if h not in headers_actuales]
+            headers_faltantes = [h for h in ExcelImporter.MATERIALES_HEADERS if h not in headers_normalizados]
+
+            wb.close()
 
             if headers_faltantes:
                 return False, f"Encabezados faltantes: {', '.join(headers_faltantes)}"
@@ -285,18 +321,32 @@ class ExcelImporter:
             if not Path(archivo_path).exists():
                 return False, f"Archivo no encontrado: {archivo_path}"
 
-            df = pd.read_excel(archivo_path, sheet_name=0, nrows=0)
-            df.columns = df.columns.str.strip()
+            wb = openpyxl.load_workbook(archivo_path, read_only=True)
+            ws = wb.active
+
+            # Leer solo encabezados
+            headers_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            if not headers_row:
+                wb.close()
+                return False, "El archivo está vacío"
+
+            headers_originales = [str(h).strip() if h else '' for h in headers_row]
 
             # Intentar mapear encabezados
             columnas_mapeadas = {}
-            for col in df.columns:
+            headers_normalizados = []
+            for col in headers_originales:
                 col_lower = col.lower().strip()
                 if col_lower in ExcelImporter.CLIENTES_HEADERS_VARIANTS:
-                    columnas_mapeadas[col] = ExcelImporter.CLIENTES_HEADERS_VARIANTS[col_lower]
+                    col_normalizado = ExcelImporter.CLIENTES_HEADERS_VARIANTS[col_lower]
+                    columnas_mapeadas[col] = col_normalizado
+                    headers_normalizados.append(col_normalizado)
+                else:
+                    headers_normalizados.append(col)
 
-            headers_actuales = [columnas_mapeadas.get(col, col) for col in df.columns]
-            headers_faltantes = [h for h in ExcelImporter.CLIENTES_HEADERS if h not in headers_actuales]
+            headers_faltantes = [h for h in ExcelImporter.CLIENTES_HEADERS if h not in headers_normalizados]
+
+            wb.close()
 
             if headers_faltantes:
                 return False, f"Encabezados faltantes: {', '.join(headers_faltantes)}"
