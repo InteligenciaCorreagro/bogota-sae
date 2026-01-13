@@ -477,11 +477,21 @@ class ProcesadorLactalisVentas:
         # Validar material
         if self.validar_materiales:
             codigo = linea.get('codigo_subyacente', '')
-            # Extraer sociedad del NIT del vendedor
-            sociedad = linea.get('nit_vendedor', '')
+            nombre_producto = linea.get('nombre_producto', '').upper()
+
+            # Determinar sociedad según el nombre del producto
+            # Parmalat → Lactalis (800245795)
+            # Proleche → Proleche (890903711)
+            if 'PARMALAT' in nombre_producto:
+                sociedad = '800245795'  # Lactalis
+            elif 'PROLECHE' in nombre_producto:
+                sociedad = '890903711'  # Proleche
+            else:
+                # Si no contiene ninguno, usar el NIT del vendedor como fallback
+                sociedad = linea.get('nit_vendedor', '')
 
             if not self.database.validar_material(codigo, sociedad):
-                mensaje = f"Material no registrado: {codigo} (Sociedad: {sociedad})"
+                mensaje = f"Material no registrado: {codigo} (Sociedad: {sociedad}, Producto: {nombre_producto})"
                 logger.warning(mensaje)
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje

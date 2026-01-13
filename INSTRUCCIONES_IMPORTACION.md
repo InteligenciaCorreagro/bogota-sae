@@ -6,21 +6,27 @@ Crear un archivo Excel (.xlsx) con los siguientes encabezados en la primera fila
 
 | CODIGO | DESCRIPCION | SOCIEDAD |
 |--------|-------------|----------|
-| MAT001 | Leche Entera 1L | 800245795 |
-| MAT002 | Yogurt Natural 500ml | 800245795 |
-| MAT003 | Queso Mozzarella 250g | 890903711 |
+| MAT001 | LECHE PARMALAT ENTERA 1L | 800245795 |
+| MAT002 | YOGURT PARMALAT NATURAL 500ML | 800245795 |
+| MAT003 | QUESO PROLECHE MOZZARELLA 250G | 890903711 |
 
 ### Descripción de Columnas:
 - **CODIGO**: Código único del material (debe coincidir con el código en las facturas XML)
 - **DESCRIPCION**: Descripción del material
 - **SOCIEDAD**: NIT de la sociedad (vendedor). Ejemplos:
-  - `800245795`: Lactalis Colombia S.A.S
-  - `890903711`: Procesadora de Leches S.A. - Proleche S.A.
+  - `800245795`: Lactalis Colombia S.A.S (para productos Parmalat)
+  - `890903711`: Procesadora de Leches S.A. - Proleche S.A. (para productos Proleche)
 
 ### Notas:
 - Los encabezados DEBEN ser exactamente: `CODIGO`, `DESCRIPCION`, `SOCIEDAD`
 - Solo se importan materiales nuevos (no duplica materiales existentes)
 - La combinación de CODIGO + SOCIEDAD debe ser única
+
+### Lógica de Validación por Nombre de Producto:
+Durante el procesamiento, la sociedad se determina automáticamente por el nombre del producto:
+- Si el nombre del producto contiene **"Parmalat"** → Se valida con sociedad **800245795** (Lactalis)
+- Si el nombre del producto contiene **"Proleche"** → Se valida con sociedad **890903711** (Proleche)
+- Si no contiene ninguno → Se usa el NIT del vendedor de la factura como fallback
 
 ---
 
