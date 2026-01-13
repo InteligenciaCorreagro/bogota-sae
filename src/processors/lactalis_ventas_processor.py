@@ -472,6 +472,7 @@ class ProcesadorLactalisVentas:
             Tupla (es_valida, mensaje_error)
         """
         if not self.database:
+            logger.debug("No hay base de datos configurada, se acepta la línea")
             return True, ""
 
         # Validar material
@@ -490,21 +491,29 @@ class ProcesadorLactalisVentas:
                 # Si no contiene ninguno, usar el NIT del vendedor como fallback
                 sociedad = linea.get('nit_vendedor', '')
 
+            logger.debug(f"Validando material: {codigo} con sociedad {sociedad} (Producto: {nombre_producto})")
+
             if not self.database.validar_material(codigo, sociedad):
-                mensaje = f"Material no registrado: {codigo} (Sociedad: {sociedad}, Producto: {nombre_producto})"
+                mensaje = f"Material RECHAZADO - No registrado: {codigo} (Sociedad: {sociedad}, Producto: {nombre_producto})"
                 logger.warning(mensaje)
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje
+            else:
+                logger.debug(f"Material ACEPTADO: {codigo} con sociedad {sociedad}")
 
         # Validar cliente
         if self.validar_clientes:
             nit_comprador = linea.get('nit_comprador', '')
 
+            logger.debug(f"Validando cliente: {nit_comprador}")
+
             if not self.database.validar_cliente(nit_comprador):
-                mensaje = f"Cliente no registrado: {nit_comprador}"
+                mensaje = f"Cliente RECHAZADO - No registrado: {nit_comprador}"
                 logger.warning(mensaje)
                 self.stats['clientes_invalidos'] += 1
                 return False, mensaje
+            else:
+                logger.debug(f"Cliente ACEPTADO: {nit_comprador}")
 
         return True, ""
 
@@ -518,16 +527,35 @@ class ProcesadorLactalisVentas:
         Returns:
             Lista de líneas válidas
         """
-        if not self.database or (not self.validar_materiales and not self.validar_clientes):
+        if not self.database:
+            logger.info("No hay base de datos configurada, se aceptan todas las líneas")
             return lineas
 
+        if not self.validar_materiales and not self.validar_clientes:
+            logger.info("Validaciones desactivadas, se aceptan todas las líneas")
+            return lineas
+
+        logger.info(f"Iniciando validación de {len(lineas)} líneas")
+        logger.info(f"Validar materiales: {self.validar_materiales}")
+        logger.info(f"Validar clientes: {self.validar_clientes}")
+
         lineas_validas = []
-        for linea in lineas:
+        lineas_rechazadas_detalle = 0
+
+        for idx, linea in enumerate(lineas, 1):
             es_valida, mensaje = self._validar_linea_con_bd(linea)
             if es_valida:
                 lineas_validas.append(linea)
             else:
+                lineas_rechazadas_detalle += 1
                 self.stats['lineas_rechazadas'] += 1
+                if lineas_rechazadas_detalle <= 10:  # Solo mostrar las primeras 10
+                    logger.info(f"Línea {idx} rechazada: {mensaje}")
+
+        if lineas_rechazadas_detalle > 10:
+            logger.info(f"... y {lineas_rechazadas_detalle - 10} líneas más rechazadas")
+
+        logger.info(f"Resultado validación: {len(lineas_validas)} válidas, {lineas_rechazadas_detalle} rechazadas")
 
         return lineas_validas
 

@@ -56,6 +56,12 @@ Crear un archivo Excel (.xlsx) con los siguientes encabezados en la primera fila
 - Solo se importan clientes nuevos (no duplica clientes existentes)
 - El Cód.Padre debe ser único
 
+### Lógica de Validación Durante el Procesamiento:
+Durante el procesamiento de facturas, los clientes se validan por **NIT del comprador**:
+- Se extrae el NIT del comprador de la factura XML
+- Se valida que ese NIT exista en la base de datos
+- Si NO existe → La línea se rechaza automáticamente
+
 ---
 
 ## Cómo Usar

@@ -322,12 +322,12 @@ class LactalisDatabase:
 
         return nuevos, existentes, errores
 
-    def validar_cliente(self, cod_padre: str) -> bool:
+    def validar_cliente(self, nit: str) -> bool:
         """
-        Valida si un cliente existe en la base de datos
+        Valida si un cliente existe en la base de datos por NIT
 
         Args:
-            cod_padre: Código padre del cliente
+            nit: NIT del cliente
 
         Returns:
             True si existe, False si no existe
@@ -336,8 +336,8 @@ class LactalisDatabase:
             cursor = self.conn.cursor()
             cursor.execute("""
                 SELECT id FROM clientes
-                WHERE cod_padre = ?
-            """, (cod_padre.strip(),))
+                WHERE nit = ?
+            """, (nit.strip(),))
 
             return cursor.fetchone() is not None
         except Exception as e:
