@@ -109,13 +109,37 @@ class ExcelImporter:
                     f"Se esperan: {ExcelImporter.MATERIALES_HEADERS}"
                 )
 
+            # Mapeo de nombres de empresas a NITs
+            SOCIEDAD_MAP = {
+                'parmalat': '800245795',  # Lactalis
+                'lactalis': '800245795',
+                'proleche': '890903711',  # Procesadora de Leches
+                'procesadora de leches': '890903711',
+            }
+
             # Convertir a lista de diccionarios
             materiales = []
             for idx, row in df_renamed.iterrows():
+                codigo = str(row['CODIGO']).strip() if pd.notna(row['CODIGO']) else ''
+                descripcion = str(row['DESCRIPCION']).strip() if pd.notna(row['DESCRIPCION']) else ''
+                sociedad_raw = str(row['SOCIEDAD']).strip() if pd.notna(row['SOCIEDAD']) else ''
+
+                # Convertir nombre de empresa a NIT
+                sociedad_lower = sociedad_raw.lower()
+                sociedad_nit = SOCIEDAD_MAP.get(sociedad_lower, sociedad_raw)
+
+                # Si no se encontró en el mapeo y no parece un NIT numérico, loguear advertencia
+                if sociedad_nit == sociedad_raw and not sociedad_raw.isdigit():
+                    if sociedad_raw:  # Solo advertir si no está vacío
+                        logger.warning(
+                            f"Fila {idx+2}: Sociedad '{sociedad_raw}' no reconocida. "
+                            f"Se esperaba 'Parmalat' o 'Proleche'. Se usará tal cual."
+                        )
+
                 material = {
-                    'codigo': str(row['CODIGO']).strip() if pd.notna(row['CODIGO']) else '',
-                    'descripcion': str(row['DESCRIPCION']).strip() if pd.notna(row['DESCRIPCION']) else '',
-                    'sociedad': str(row['SOCIEDAD']).strip() if pd.notna(row['SOCIEDAD']) else ''
+                    'codigo': codigo,
+                    'descripcion': descripcion,
+                    'sociedad': sociedad_nit
                 }
 
                 # Filtrar filas vacías

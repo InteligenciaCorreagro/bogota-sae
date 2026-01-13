@@ -6,16 +6,16 @@ Crear un archivo Excel (.xlsx) con los siguientes encabezados en la primera fila
 
 | CODIGO | DESCRIPCION | SOCIEDAD |
 |--------|-------------|----------|
-| MAT001 | LECHE PARMALAT ENTERA 1L | 800245795 |
-| MAT002 | YOGURT PARMALAT NATURAL 500ML | 800245795 |
-| MAT003 | QUESO PROLECHE MOZZARELLA 250G | 890903711 |
+| MAT001 | LECHE PARMALAT ENTERA 1L | Parmalat |
+| MAT002 | YOGURT PARMALAT NATURAL 500ML | Parmalat |
+| MAT003 | QUESO PROLECHE MOZZARELLA 250G | Proleche |
 
 ### Descripción de Columnas:
 - **CODIGO**: Código único del material (debe coincidir con el código en las facturas XML)
 - **DESCRIPCION**: Descripción del material
-- **SOCIEDAD**: NIT de la sociedad (vendedor). Ejemplos:
-  - `800245795`: Lactalis Colombia S.A.S (para productos Parmalat)
-  - `890903711`: Procesadora de Leches S.A. - Proleche S.A. (para productos Proleche)
+- **SOCIEDAD**: Nombre de la empresa. Valores permitidos:
+  - `Parmalat` o `Lactalis` → Se convierte automáticamente a Lactalis (NIT: 800245795)
+  - `Proleche` o `Procesadora de Leches` → Se convierte automáticamente a Proleche (NIT: 890903711)
 
 ### Notas:
 - Los encabezados DEBEN ser exactamente: `CODIGO`, `DESCRIPCION`, `SOCIEDAD`

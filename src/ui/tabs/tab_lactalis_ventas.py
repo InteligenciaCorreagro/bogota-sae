@@ -156,7 +156,7 @@ class TabLactalisVentas(QWidget):
 
         # Nota sobre formato
         formato_note = QLabel(
-            "💡 Materiales: CODIGO, DESCRIPCION, SOCIEDAD (Parmalat→Lactalis, Proleche→Proleche)\n"
+            "💡 Materiales: CODIGO, DESCRIPCION, SOCIEDAD (usar: 'Parmalat' o 'Proleche')\n"
             "💡 Clientes: Cód.Padre, Nombre Código Padre, NIT (si dice 'no nit' no se registra)"
         )
         formato_note.setFont(QFont("Arial", 8))
