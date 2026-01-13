@@ -28,24 +28,33 @@ class LactalisDatabase:
         Args:
             db_path: Ruta al archivo de base de datos. Si es None, usa la ruta por defecto.
         """
-        if db_path is None:
-            # Determinar la ruta por defecto según el sistema operativo
-            if os.name == 'nt':  # Windows
-                app_data = os.getenv('APPDATA')
-                if app_data:
-                    base_dir = Path(app_data) / 'BogotaSAE' / 'database'
-                else:
+        try:
+            if db_path is None:
+                # Determinar la ruta por defecto según el sistema operativo
+                if os.name == 'nt':  # Windows
+                    app_data = os.getenv('APPDATA')
+                    if app_data:
+                        base_dir = Path(app_data) / 'BogotaSAE' / 'database'
+                    else:
+                        base_dir = Path.cwd() / 'database'
+                else:  # Linux/Mac
                     base_dir = Path.cwd() / 'database'
-            else:  # Linux/Mac
-                base_dir = Path.cwd() / 'database'
 
-            base_dir.mkdir(parents=True, exist_ok=True)
-            db_path = str(base_dir / 'lactalis_ventas.db')
+                logger.info(f"Creando directorio de base de datos: {base_dir}")
+                base_dir.mkdir(parents=True, exist_ok=True)
+                db_path = str(base_dir / 'lactalis_ventas.db')
 
-        self.db_path = db_path
-        self.conn = None
-        self._conectar()
-        self._crear_tablas()
+            self.db_path = db_path
+            logger.info(f"Ruta de base de datos: {self.db_path}")
+
+            self.conn = None
+            self._conectar()
+            self._crear_tablas()
+
+            logger.info("Base de datos inicializada correctamente")
+        except Exception as e:
+            logger.error(f"Error en __init__ de LactalisDatabase: {str(e)}", exc_info=True)
+            raise
 
     def _conectar(self):
         """Conecta a la base de datos SQLite"""

@@ -64,7 +64,16 @@ class TabLactalisVentas(QWidget):
         super().__init__()
         self.carpeta_entrada = None
         self.procesamiento_thread = None
-        self.db = LactalisDatabase()
+        self.db = None
+
+        # Inicializar base de datos con manejo de errores
+        try:
+            self.db = LactalisDatabase()
+            logger.info("Base de datos inicializada correctamente")
+        except Exception as e:
+            logger.error(f"ERROR CRÍTICO al inicializar base de datos: {str(e)}", exc_info=True)
+            # Continuar sin base de datos - las validaciones estarán deshabilitadas
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -99,10 +108,19 @@ class TabLactalisVentas(QWidget):
         db_layout.setSpacing(10)
 
         # Info de BD
-        db_info = QLabel(
-            f"Base de datos: {self.db.db_path}\n"
-            f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
-        )
+        if self.db:
+            try:
+                db_text = (
+                    f"Base de datos: {self.db.db_path}\n"
+                    f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
+                )
+            except Exception as e:
+                logger.error(f"Error obteniendo info de BD: {str(e)}")
+                db_text = "Base de datos: Error al leer información"
+        else:
+            db_text = "Base de datos: No disponible (error de inicialización)"
+
+        db_info = QLabel(db_text)
         db_info.setFont(QFont("Arial", 9))
         db_info.setStyleSheet("color: #34495e; padding: 5px;")
         db_info.setWordWrap(True)
@@ -481,6 +499,16 @@ class TabLactalisVentas(QWidget):
 
     def importar_materiales(self):
         """Importa materiales desde un archivo Excel"""
+        # Verificar que la BD esté disponible
+        if not self.db:
+            QMessageBox.critical(
+                self,
+                "Base de datos no disponible",
+                "La base de datos no está disponible.\n\n"
+                "Por favor revise los logs para más detalles."
+            )
+            return
+
         archivo, _ = QFileDialog.getOpenFileName(
             self,
             "Seleccionar archivo Excel de Materiales",
@@ -492,6 +520,7 @@ class TabLactalisVentas(QWidget):
             return
 
         try:
+            logger.info(f"Iniciando importación de materiales desde: {archivo}")
             # Validar formato del archivo
             es_valido, mensaje = ExcelImporter.validar_archivo_materiales(archivo)
             if not es_valido:
@@ -550,6 +579,16 @@ class TabLactalisVentas(QWidget):
 
     def importar_clientes(self):
         """Importa clientes desde un archivo Excel"""
+        # Verificar que la BD esté disponible
+        if not self.db:
+            QMessageBox.critical(
+                self,
+                "Base de datos no disponible",
+                "La base de datos no está disponible.\n\n"
+                "Por favor revise los logs para más detalles."
+            )
+            return
+
         archivo, _ = QFileDialog.getOpenFileName(
             self,
             "Seleccionar archivo Excel de Clientes",
@@ -561,6 +600,7 @@ class TabLactalisVentas(QWidget):
             return
 
         try:
+            logger.info(f"Iniciando importación de clientes desde: {archivo}")
             # Validar formato del archivo
             es_valido, mensaje = ExcelImporter.validar_archivo_clientes(archivo)
             if not es_valido:
