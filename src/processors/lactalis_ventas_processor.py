@@ -512,20 +512,25 @@ class ProcesadorLactalisVentas:
             nombre_producto = linea.get('nombre_producto', '').upper()
 
             # Determinar sociedad según el nombre del producto
-            # Parmalat → Lactalis (800245795)
-            # Proleche → Proleche (890903711)
-            if 'PARMALAT' in nombre_producto:
+            # IMPORTANTE: Solo aceptamos Parmalat (Lactalis) o Proleche
+            # Cualquier otro producto (ej: President) se rechaza directamente
+
+            if 'PARMALAT' in nombre_producto or 'LACTALIS' in nombre_producto:
                 sociedad = '800245795'  # Lactalis
             elif 'PROLECHE' in nombre_producto:
                 sociedad = '890903711'  # Proleche
             else:
-                # Si no contiene ninguno, usar el NIT del vendedor como fallback
-                sociedad = linea.get('nit_vendedor', '')
+                # Si no es ni Parmalat ni Proleche → RECHAZAR DIRECTAMENTE
+                mensaje = f"Material RECHAZADO - Producto no permitido: {nombre_producto} (solo Parmalat/Lactalis o Proleche son válidos)"
+                logger.warning(mensaje)
+                self.stats['materiales_invalidos'] += 1
+                return False, mensaje
 
             logger.debug(f"Validando material: {codigo} con sociedad {sociedad} (Producto: {nombre_producto})")
 
+            # Ahora verificar si existe en la base de datos
             if not self.database.validar_material(codigo, sociedad):
-                mensaje = f"Material RECHAZADO - No registrado: {codigo} (Sociedad: {sociedad}, Producto: {nombre_producto})"
+                mensaje = f"Material RECHAZADO - No existe en BD: {codigo} (Sociedad: {sociedad}, Producto: {nombre_producto})"
                 logger.warning(mensaje)
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje

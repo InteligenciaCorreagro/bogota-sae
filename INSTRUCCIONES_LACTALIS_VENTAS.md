@@ -113,16 +113,18 @@ Cuando activas "Validar materiales contra BD":
    - `codigo_subyacente` (código del producto)
    - `nombre_producto` (nombre del producto)
 
-2. Determina la SOCIEDAD según el nombre del producto:
-   - Si el nombre contiene "PARMALAT" → Sociedad = `800245795` (Lactalis)
+2. **FILTRO INICIAL - Solo acepta Parmalat/Lactalis o Proleche:**
+   - Si el nombre contiene "PARMALAT" o "LACTALIS" → Sociedad = `800245795` (Lactalis)
    - Si el nombre contiene "PROLECHE" → Sociedad = `890903711` (Proleche)
-   - Si no contiene ninguno → Usa el NIT del vendedor del XML
+   - **Si NO contiene ninguno (ej: "PRESIDENT")** → **RECHAZA inmediatamente** ❌
+
+   ⚠️ **IMPORTANTE:** Productos de otras marcas (President, etc.) son rechazados automáticamente
 
 3. Busca en la BD si existe un material con:
    - `CODIGO` = codigo_subyacente del XML
    - `SOCIEDAD` = la sociedad determinada
 
-4. Si NO existe → **RECHAZA la línea completa** (no se incluye en el Excel final)
+4. Si NO existe en BD → **RECHAZA la línea completa** (no se incluye en el Excel final)
 
 ### Validación de Clientes
 Cuando activas "Validar clientes contra BD":
@@ -134,6 +136,43 @@ Cuando activas "Validar clientes contra BD":
    - `NIT` = nit_comprador del XML
 
 3. Si NO existe → **RECHAZA la línea completa** (no se incluye en el Excel final)
+
+---
+
+## 💡 EJEMPLOS PRÁCTICOS DE VALIDACIÓN
+
+### Ejemplo 1: Producto Parmalat que SÍ existe en BD
+```
+XML: codigo=123456, nombre="LECHE PARMALAT ENTERA 1L"
+BD: Tiene material codigo=123456, sociedad=800245795
+
+✅ RESULTADO: ACEPTADO (es Parmalat y existe en BD)
+```
+
+### Ejemplo 2: Producto Parmalat que NO existe en BD
+```
+XML: codigo=999999, nombre="YOGURT PARMALAT FRESA 150G"
+BD: NO tiene material codigo=999999, sociedad=800245795
+
+❌ RESULTADO: RECHAZADO (es Parmalat pero no está en BD)
+```
+
+### Ejemplo 3: Producto Proleche que SÍ existe en BD
+```
+XML: codigo=456789, nombre="LECHE PROLECHE DESLACTOSADA"
+BD: Tiene material codigo=456789, sociedad=890903711
+
+✅ RESULTADO: ACEPTADO (es Proleche y existe en BD)
+```
+
+### Ejemplo 4: Producto de otra marca (President, etc.)
+```
+XML: codigo=111222, nombre="QUESO PRESIDENT CAMEMBERT"
+
+❌ RESULTADO: RECHAZADO INMEDIATAMENTE (no es Parmalat ni Proleche)
+     - Ni siquiera se busca en la BD
+     - Mensaje: "Producto no permitido"
+```
 
 ---
 
