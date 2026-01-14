@@ -65,14 +65,12 @@ class TabLactalisVentas(QWidget):
         self.carpeta_entrada = None
         self.procesamiento_thread = None
         self.db = None
+        self.db_inicializada = False  # Flag para saber si ya se intentó inicializar
+        self.db_error = None  # Para guardar error de inicialización si ocurre
 
-        # Inicializar base de datos con manejo de errores
-        try:
-            self.db = LactalisDatabase()
-            logger.info("Base de datos inicializada correctamente")
-        except Exception as e:
-            logger.error(f"ERROR CRÍTICO al inicializar base de datos: {str(e)}", exc_info=True)
-            # Continuar sin base de datos - las validaciones estarán deshabilitadas
+        # NO inicializar la BD aquí - usar carga lazy
+        # La BD se inicializará la primera vez que se necesite
+        logger.info("TabLactalisVentas iniciado - BD se cargará cuando sea necesaria")
 
         self.setup_ui()
 
@@ -107,18 +105,8 @@ class TabLactalisVentas(QWidget):
         db_layout = QVBoxLayout()
         db_layout.setSpacing(10)
 
-        # Info de BD
-        if self.db:
-            try:
-                db_text = (
-                    f"Base de datos: {self.db.db_path}\n"
-                    f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
-                )
-            except Exception as e:
-                logger.error(f"Error obteniendo info de BD: {str(e)}")
-                db_text = "Base de datos: Error al leer información"
-        else:
-            db_text = "Base de datos: No disponible (error de inicialización)"
+        # Info de BD - mostrar mensaje inicial, se actualizará después
+        db_text = "Base de datos: Se cargará cuando sea necesaria (clic en importar para inicializar)"
 
         db_info = QLabel(db_text)
         db_info.setFont(QFont("Arial", 9))
@@ -325,6 +313,50 @@ class TabLactalisVentas(QWidget):
 
         self.setLayout(main_layout)
 
+    def _inicializar_db_si_necesario(self) -> bool:
+        """
+        Inicializa la base de datos de forma lazy (solo cuando se necesita)
+
+        Returns:
+            bool: True si la BD está disponible, False si hubo error
+        """
+        # Si ya se intentó inicializar, retornar estado
+        if self.db_inicializada:
+            return self.db is not None
+
+        # Marcar que ya se intentó
+        self.db_inicializada = True
+
+        try:
+            logger.info("Inicializando base de datos de forma lazy...")
+            self.db = LactalisDatabase()
+            logger.info("✅ Base de datos inicializada correctamente")
+
+            # Actualizar label de info
+            try:
+                db_text = (
+                    f"Base de datos: {self.db.db_path}\n"
+                    f"Materiales: {self.db.contar_materiales()} | Clientes: {self.db.contar_clientes()}"
+                )
+                self.db_info_label.setText(db_text)
+            except:
+                pass
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ ERROR al inicializar base de datos: {str(e)}", exc_info=True)
+            self.db_error = str(e)
+            self.db = None
+
+            # Actualizar label de info
+            self.db_info_label.setText(
+                f"Base de datos: Error de inicialización\n"
+                f"Detalles: {str(e)}"
+            )
+
+            return False
+
     def agregar_log(self, mensaje: str):
         """Agrega un mensaje a la consola de log"""
         self.log_console.append(mensaje)
@@ -422,10 +454,10 @@ class TabLactalisVentas(QWidget):
         self.progress.setVisible(True)
         self.progress.setValue(0)
         self.log_console.clear()
-        
+
         self.estado_label.setText("⏳ Procesando archivos de LACTALIS VENTAS...")
         self.estado_label.setStyleSheet("color: #f39c12; padding: 10px; font-weight: bold;")
-        
+
         self.agregar_log("=" * 60)
         self.agregar_log("Iniciando procesamiento de LACTALIS VENTAS...")
         self.agregar_log("=" * 60)
@@ -437,12 +469,29 @@ class TabLactalisVentas(QWidget):
         validar_materiales = self.checkbox_validar_materiales.isChecked()
         validar_clientes = self.checkbox_validar_clientes.isChecked()
 
+        # Si se requieren validaciones, inicializar BD
+        if validar_materiales or validar_clientes:
+            self.agregar_log("Inicializando base de datos para validaciones...")
+            if not self._inicializar_db_si_necesario():
+                QMessageBox.critical(
+                    self,
+                    "Error de base de datos",
+                    f"No se pudo inicializar la base de datos:\n\n{self.db_error}\n\n"
+                    f"Las validaciones se deshabilitarán."
+                )
+                validar_materiales = False
+                validar_clientes = False
+                self.checkbox_validar_materiales.setChecked(False)
+                self.checkbox_validar_clientes.setChecked(False)
+            else:
+                self.agregar_log("✅ Base de datos lista")
+
         # Crear procesador con callback de progreso y validaciones
         procesador = ProcesadorLactalisVentas(
             self.carpeta_entrada,
             plantilla,
             progress_callback=self.actualizar_progreso,
-            database=self.db,
+            database=self.db if (validar_materiales or validar_clientes) else None,
             validar_materiales=validar_materiales,
             validar_clientes=validar_clientes
         )
@@ -499,13 +548,13 @@ class TabLactalisVentas(QWidget):
 
     def importar_materiales(self):
         """Importa materiales desde un archivo Excel"""
-        # Verificar que la BD esté disponible
-        if not self.db:
+        # Inicializar BD si es necesario
+        if not self._inicializar_db_si_necesario():
             QMessageBox.critical(
                 self,
                 "Base de datos no disponible",
-                "La base de datos no está disponible.\n\n"
-                "Por favor revise los logs para más detalles."
+                f"No se pudo inicializar la base de datos:\n\n{self.db_error}\n\n"
+                f"Por favor revise los logs para más detalles."
             )
             return
 
@@ -579,13 +628,13 @@ class TabLactalisVentas(QWidget):
 
     def importar_clientes(self):
         """Importa clientes desde un archivo Excel"""
-        # Verificar que la BD esté disponible
-        if not self.db:
+        # Inicializar BD si es necesario
+        if not self._inicializar_db_si_necesario():
             QMessageBox.critical(
                 self,
                 "Base de datos no disponible",
-                "La base de datos no está disponible.\n\n"
-                "Por favor revise los logs para más detalles."
+                f"No se pudo inicializar la base de datos:\n\n{self.db_error}\n\n"
+                f"Por favor revise los logs para más detalles."
             )
             return
 

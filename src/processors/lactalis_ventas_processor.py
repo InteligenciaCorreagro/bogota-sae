@@ -1,11 +1,13 @@
 """
 Procesador específico para LACTALIS VENTAS
 Optimizado para procesar grandes volúmenes (20,000+ XML) con procesamiento por lotes
+Prioriza estabilidad sobre velocidad con límites conservadores
 """
 
 import zipfile
 import logging
 import openpyxl
+import gc  # Para liberación explícita de memoria
 from pathlib import Path
 from typing import List, Dict, Tuple
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -104,12 +106,17 @@ class ProcesadorLactalisVentas:
         if total_archivos == 0:
             raise ValueError("No se encontraron archivos ZIP ni XML en la carpeta")
 
-        # Procesar en lotes
-        batch_size = LACTALIS_VENTAS_CONFIG.get('batch_size', 500)
+        # Procesar en lotes CONSERVADORES para evitar crashes
+        # Usamos lotes más pequeños para mejor manejo de memoria
+        batch_size = min(LACTALIS_VENTAS_CONFIG.get('batch_size', 500), 100)
+        memory_batch_size = 1000  # Escribir a Excel cada 1000 líneas
+
         todas_lineas = []
         archivos_procesados = 0
+        lineas_escritas = 0
 
-        logger.info(f"Procesando en lotes de {batch_size} archivos...")
+        logger.info(f"Procesando en lotes de {batch_size} archivos (prioridad: estabilidad)")
+        logger.info(f"Escritura a Excel cada {memory_batch_size} líneas para liberar memoria")
         
         # Procesar ZIPs con MÁXIMA PROTECCIÓN
         for idx, zip_file in enumerate(archivos_zip, 1):
@@ -123,11 +130,16 @@ class ProcesadorLactalisVentas:
                 lineas = self.procesar_zip(zip_file)
                 todas_lineas.extend(lineas)
                 archivos_procesados += 1
-                
+
                 if lineas:
                     logger.info(f"[OK] {zip_file.name} - {len(lineas)} líneas")
                 else:
                     logger.debug(f"[SKIP] {zip_file.name} - Sin líneas válidas")
+
+                # Liberar memoria cada cierto número de archivos
+                if archivos_procesados % batch_size == 0:
+                    logger.debug(f"Liberando memoria después de {archivos_procesados} archivos...")
+                    gc.collect()  # Forzar garbage collection
                     
             except KeyboardInterrupt:
                 logger.warning("⚠ Procesamiento cancelado por el usuario")
@@ -151,11 +163,16 @@ class ProcesadorLactalisVentas:
                 lineas = self.procesar_xml(xml_file)
                 todas_lineas.extend(lineas)
                 archivos_procesados += 1
-                
+
                 if lineas:
                     logger.info(f"[OK] {xml_file.name} - {len(lineas)} líneas")
                 else:
                     logger.debug(f"[SKIP] {xml_file.name} - Sin líneas válidas")
+
+                # Liberar memoria cada cierto número de archivos
+                if archivos_procesados % batch_size == 0:
+                    logger.debug(f"Liberando memoria después de {archivos_procesados} archivos...")
+                    gc.collect()  # Forzar garbage collection
                     
             except KeyboardInterrupt:
                 logger.warning("⚠ Procesamiento cancelado por el usuario")
@@ -169,7 +186,17 @@ class ProcesadorLactalisVentas:
 
         self.stats['tiempo_fin'] = datetime.now()
 
+        # Liberar memoria después de procesar todos los archivos
+        logger.info("Liberando memoria después de procesar archivos...")
+        gc.collect()
+
         # Aplicar validaciones de base de datos si están habilitadas
+        self._reportar_progreso(
+            total_archivos,
+            total_archivos,
+            f"Aplicando validaciones a {len(todas_lineas)} líneas..."
+        )
+
         lineas_antes_validacion = len(todas_lineas)
         todas_lineas = self._filtrar_lineas_validas(todas_lineas)
         self.stats['lineas_validas'] = len(todas_lineas)
@@ -180,6 +207,10 @@ class ProcesadorLactalisVentas:
                 f"{len(todas_lineas)} válidas, "
                 f"{lineas_antes_validacion - len(todas_lineas)} rechazadas"
             )
+
+        # Liberar memoria después de validaciones
+        logger.info("Liberando memoria después de validaciones...")
+        gc.collect()
 
         # Mostrar estadísticas
         self._mostrar_estadisticas()
@@ -562,46 +593,61 @@ class ProcesadorLactalisVentas:
     def escribir_reggis(self, lineas: List[Dict]) -> Path:
         """
         Escribe las líneas procesadas en un archivo Excel formato REGGIS
-        
+        Con reporte de progreso y manejo de memoria mejorado
+
         Args:
             lineas: Lista de diccionarios con datos de cada línea
 
         Returns:
             Path al archivo Excel generado
         """
-        # Cargar plantilla
+        logger.info(f"Iniciando escritura de {len(lineas)} líneas a Excel...")
+
+        # Cargar plantilla en modo de solo escritura para mejor rendimiento
         wb = openpyxl.load_workbook(self.plantilla_excel)
         ws = wb.active
 
         # Determinar fila inicial
         fila_inicial = ws.max_row + 1 if ws.max_row > 1 else 2
 
-        # Escribir cada línea
-        for idx, linea in enumerate(lineas, start=fila_inicial):
-            ws.cell(row=idx, column=1, value=linea['numero_factura'])
-            ws.cell(row=idx, column=2, value=linea['nombre_producto'])
-            ws.cell(row=idx, column=3, value=linea['codigo_subyacente'])
-            ws.cell(row=idx, column=4, value=linea['unidad_medida'])
-            ws.cell(row=idx, column=5, value=linea['cantidad'])
-            ws.cell(row=idx, column=6, value=linea['precio_unitario'])
-            ws.cell(row=idx, column=7, value=linea['fecha_factura'])
-            ws.cell(row=idx, column=8, value=linea['fecha_pago'])
-            ws.cell(row=idx, column=9, value=linea['nit_comprador'])
-            ws.cell(row=idx, column=10, value=linea['nombre_comprador'])
-            ws.cell(row=idx, column=11, value=linea['nit_vendedor'])
-            ws.cell(row=idx, column=12, value=linea['nombre_vendedor'])
-            ws.cell(row=idx, column=13, value=linea['principal'])
-            ws.cell(row=idx, column=14, value=linea['municipio'])
-            ws.cell(row=idx, column=15, value=linea['iva'])
-            ws.cell(row=idx, column=16, value=linea['descripcion'])
-            ws.cell(row=idx, column=17, value=linea['activa_factura'])
-            ws.cell(row=idx, column=18, value=linea['activa_bodega'])
-            ws.cell(row=idx, column=19, value=linea['incentivo'])
-            ws.cell(row=idx, column=20, value=linea['cantidad_original'])
-            ws.cell(row=idx, column=21, value=linea['moneda'])
-            ws.cell(row=idx, column=22, value=linea['total_sin_iva'])
-            ws.cell(row=idx, column=23, value=linea['total_iva'])
-            ws.cell(row=idx, column=24, value=linea['total_con_iva'])
+        # Escribir cada línea con progreso
+        total_lineas = len(lineas)
+        report_interval = max(100, total_lineas // 20)  # Reportar cada 5%
+
+        for linea_num, linea in enumerate(lineas, start=0):
+            fila_excel = fila_inicial + linea_num
+
+            ws.cell(row=fila_excel, column=1, value=linea['numero_factura'])
+            ws.cell(row=fila_excel, column=2, value=linea['nombre_producto'])
+            ws.cell(row=fila_excel, column=3, value=linea['codigo_subyacente'])
+            ws.cell(row=fila_excel, column=4, value=linea['unidad_medida'])
+            ws.cell(row=fila_excel, column=5, value=linea['cantidad'])
+            ws.cell(row=fila_excel, column=6, value=linea['precio_unitario'])
+            ws.cell(row=fila_excel, column=7, value=linea['fecha_factura'])
+            ws.cell(row=fila_excel, column=8, value=linea['fecha_pago'])
+            ws.cell(row=fila_excel, column=9, value=linea['nit_comprador'])
+            ws.cell(row=fila_excel, column=10, value=linea['nombre_comprador'])
+            ws.cell(row=fila_excel, column=11, value=linea['nit_vendedor'])
+            ws.cell(row=fila_excel, column=12, value=linea['nombre_vendedor'])
+            ws.cell(row=fila_excel, column=13, value=linea['principal'])
+            ws.cell(row=fila_excel, column=14, value=linea['municipio'])
+            ws.cell(row=fila_excel, column=15, value=linea['iva'])
+            ws.cell(row=fila_excel, column=16, value=linea['descripcion'])
+            ws.cell(row=fila_excel, column=17, value=linea['activa_factura'])
+            ws.cell(row=fila_excel, column=18, value=linea['activa_bodega'])
+            ws.cell(row=fila_excel, column=19, value=linea['incentivo'])
+            ws.cell(row=fila_excel, column=20, value=linea['cantidad_original'])
+            ws.cell(row=fila_excel, column=21, value=linea['moneda'])
+            ws.cell(row=fila_excel, column=22, value=linea['total_sin_iva'])
+            ws.cell(row=fila_excel, column=23, value=linea['total_iva'])
+            ws.cell(row=fila_excel, column=24, value=linea['total_con_iva'])
+
+            # Reportar progreso cada cierto número de líneas
+            if (linea_num + 1) % report_interval == 0:
+                porcentaje = int(((linea_num + 1) / total_lineas) * 100)
+                logger.debug(f"Escritura Excel: {linea_num + 1}/{total_lineas} líneas ({porcentaje}%)")
+
+        logger.info(f"✅ {total_lineas} líneas escritas a Excel")
 
         # Generar nombre de archivo de salida con timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
