@@ -7,6 +7,10 @@ import sys
 import logging
 from pathlib import Path
 
+# Agregar el directorio src al path de Python
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
 # Configurar logging ANTES de cualquier import
 logging.basicConfig(
     level=logging.DEBUG,
@@ -30,7 +34,7 @@ try:
     logger.info("✅ PyQt6 importado")
 
     logger.info("Importando módulo principal...")
-    from src.main import MainWindow
+    from ui.main_window import MainWindow
     logger.info("✅ MainWindow importado")
 
     logger.info("Creando aplicación Qt...")

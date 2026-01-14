@@ -35,3 +35,6 @@ Thumbs.db
 Resultados_*/
 Plantilla_REGGIS.xlsx
 data/
+
+# Database runtime files
+database/
