@@ -106,7 +106,10 @@ class TabLactalisVentas(QWidget):
         db_layout.setSpacing(10)
 
         # Info de BD - mostrar mensaje inicial, se actualizará después
-        db_text = "Base de datos: Se cargará cuando sea necesaria (clic en importar para inicializar)"
+        db_text = (
+            "⚠️ IMPORTANTE: Debes importar materiales y clientes ANTES de procesar\n"
+            "Base de datos: Se cargará al hacer clic en 'Importar Materiales' o 'Importar Clientes'"
+        )
 
         db_info = QLabel(db_text)
         db_info.setFont(QFont("Arial", 9))
@@ -173,14 +176,16 @@ class TabLactalisVentas(QWidget):
         # Checkboxes para validaciones
         validaciones_layout = QHBoxLayout()
 
-        self.checkbox_validar_materiales = QCheckBox("✓ Validar materiales contra BD")
+        self.checkbox_validar_materiales = QCheckBox("✓ Validar materiales contra BD (activar solo si importaste materiales)")
         self.checkbox_validar_materiales.setFont(QFont("Arial", 9))
         self.checkbox_validar_materiales.setStyleSheet("color: #2c3e50;")
+        self.checkbox_validar_materiales.setChecked(False)  # Desactivado por defecto
         validaciones_layout.addWidget(self.checkbox_validar_materiales)
 
-        self.checkbox_validar_clientes = QCheckBox("✓ Validar clientes contra BD")
+        self.checkbox_validar_clientes = QCheckBox("✓ Validar clientes contra BD (activar solo si importaste clientes)")
         self.checkbox_validar_clientes.setFont(QFont("Arial", 9))
         self.checkbox_validar_clientes.setStyleSheet("color: #2c3e50;")
+        self.checkbox_validar_clientes.setChecked(False)  # Desactivado por defecto
         validaciones_layout.addWidget(self.checkbox_validar_clientes)
 
         db_layout.addLayout(validaciones_layout)
@@ -485,6 +490,49 @@ class TabLactalisVentas(QWidget):
                 self.checkbox_validar_clientes.setChecked(False)
             else:
                 self.agregar_log("✅ Base de datos lista")
+
+                # CRÍTICO: Verificar que la BD tenga datos
+                num_materiales = self.db.contar_materiales()
+                num_clientes = self.db.contar_clientes()
+
+                warning_msgs = []
+                if validar_materiales and num_materiales == 0:
+                    warning_msgs.append(
+                        "⚠️ VALIDACIÓN DE MATERIALES ACTIVADA pero la base de datos está VACÍA.\n"
+                        f"   NO hay materiales registrados ({num_materiales} materiales).\n"
+                        "   TODAS las líneas serán RECHAZADAS.\n"
+                        "   Debes importar materiales desde Excel primero."
+                    )
+
+                if validar_clientes and num_clientes == 0:
+                    warning_msgs.append(
+                        "⚠️ VALIDACIÓN DE CLIENTES ACTIVADA pero la base de datos está VACÍA.\n"
+                        f"   NO hay clientes registrados ({num_clientes} clientes).\n"
+                        "   TODAS las líneas serán RECHAZADAS.\n"
+                        "   Debes importar clientes desde Excel primero."
+                    )
+
+                if warning_msgs:
+                    warning_text = "\n\n".join(warning_msgs)
+                    respuesta = QMessageBox.warning(
+                        self,
+                        "⚠️ Base de datos vacía",
+                        f"{warning_text}\n\n"
+                        f"📊 Estado actual de la base de datos:\n"
+                        f"  • Materiales: {num_materiales}\n"
+                        f"  • Clientes: {num_clientes}\n\n"
+                        f"¿Deseas continuar de todas formas?\n"
+                        f"(Se procesarán los archivos pero probablemente todas las líneas serán rechazadas)",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+
+                    if respuesta == QMessageBox.StandardButton.No:
+                        self.agregar_log("❌ Procesamiento cancelado por el usuario")
+                        self.progress.setVisible(False)
+                        self.estado_label.setText("")
+                        return
+                else:
+                    self.agregar_log(f"✅ BD tiene {num_materiales} materiales y {num_clientes} clientes")
 
         # Crear procesador con callback de progreso y validaciones
         procesador = ProcesadorLactalisVentas(
