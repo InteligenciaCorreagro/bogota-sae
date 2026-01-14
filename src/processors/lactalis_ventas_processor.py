@@ -521,35 +521,27 @@ class ProcesadorLactalisVentas:
                 sociedad = '890903711'  # Proleche
             else:
                 # Si no es ni Parmalat ni Proleche → RECHAZAR DIRECTAMENTE
-                mensaje = f"Material RECHAZADO - Producto no permitido: {nombre_producto} (solo Parmalat/Lactalis o Proleche son válidos)"
-                logger.warning(mensaje)
+                mensaje = f"Producto no permitido: {nombre_producto} (solo Parmalat/Lactalis o Proleche)"
+                logger.info(f"❌ RECHAZADO - {mensaje}")  # Cambiado a INFO para que sea visible
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje
-
-            logger.debug(f"Validando material: {codigo} con sociedad {sociedad} (Producto: {nombre_producto})")
 
             # Ahora verificar si existe en la base de datos
             if not self.database.validar_material(codigo, sociedad):
-                mensaje = f"Material RECHAZADO - No existe en BD: {codigo} (Sociedad: {sociedad}, Producto: {nombre_producto})"
-                logger.warning(mensaje)
+                mensaje = f"Material no existe en BD: código={codigo}, sociedad={sociedad}, producto={nombre_producto}"
+                logger.info(f"❌ RECHAZADO - {mensaje}")  # Cambiado a INFO para que sea visible
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje
-            else:
-                logger.debug(f"Material ACEPTADO: {codigo} con sociedad {sociedad}")
 
         # Validar cliente
         if self.validar_clientes:
             nit_comprador = linea.get('nit_comprador', '')
 
-            logger.debug(f"Validando cliente: {nit_comprador}")
-
             if not self.database.validar_cliente(nit_comprador):
-                mensaje = f"Cliente RECHAZADO - No registrado: {nit_comprador}"
-                logger.warning(mensaje)
+                mensaje = f"Cliente no existe en BD: NIT={nit_comprador}"
+                logger.info(f"❌ RECHAZADO - {mensaje}")  # Cambiado a INFO para que sea visible
                 self.stats['clientes_invalidos'] += 1
                 return False, mensaje
-            else:
-                logger.debug(f"Cliente ACEPTADO: {nit_comprador}")
 
         return True, ""
 
@@ -571,7 +563,7 @@ class ProcesadorLactalisVentas:
             logger.info("Validaciones desactivadas, se aceptan todas las líneas")
             return lineas
 
-        logger.info(f"Iniciando validación de {len(lineas)} líneas")
+        logger.info(f"Iniciando validación de {len(lineas)} líneas contra base de datos")
         logger.info(f"Validar materiales: {self.validar_materiales}")
         logger.info(f"Validar clientes: {self.validar_clientes}")
 
@@ -585,13 +577,14 @@ class ProcesadorLactalisVentas:
             else:
                 lineas_rechazadas_detalle += 1
                 self.stats['lineas_rechazadas'] += 1
-                if lineas_rechazadas_detalle <= 10:  # Solo mostrar las primeras 10
-                    logger.info(f"Línea {idx} rechazada: {mensaje}")
+                # Mostrar TODOS los rechazos con info de la factura
+                numero_factura = linea.get('numero_factura', 'N/A')
+                nombre_producto = linea.get('nombre_producto', 'N/A')
+                logger.info(f"Factura {numero_factura}: {mensaje} | Producto: {nombre_producto[:50]}")
 
-        if lineas_rechazadas_detalle > 10:
-            logger.info(f"... y {lineas_rechazadas_detalle - 10} líneas más rechazadas")
-
-        logger.info(f"Resultado validación: {len(lineas_validas)} válidas, {lineas_rechazadas_detalle} rechazadas")
+        logger.info(f"=" * 80)
+        logger.info(f"Resultado validación BD: {len(lineas_validas)} ACEPTADAS, {lineas_rechazadas_detalle} RECHAZADAS")
+        logger.info(f"=" * 80)
 
         return lineas_validas
 
