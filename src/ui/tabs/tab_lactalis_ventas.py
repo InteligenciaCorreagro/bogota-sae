@@ -368,6 +368,9 @@ class TabLactalisVentas(QWidget):
         # Auto-scroll al final
         scrollbar = self.log_console.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+        # Procesar eventos pendientes para evitar warnings de Qt
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
 
     def seleccionar_carpeta(self):
         """Permite seleccionar una carpeta con archivos ZIP/XML"""
