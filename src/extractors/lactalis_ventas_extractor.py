@@ -8,7 +8,8 @@ ACTUALIZACIÓN: Detecta automáticamente el vendedor (Lactalis o Proleche) del X
 
 import xml.etree.ElementTree as ET
 import logging
-from typing import List, Dict, Optional
+import re
+from typing import List, Dict, Optional, Tuple
 from decimal import Decimal, InvalidOperation
 
 # Intentar importar desde el proyecto, si no, usar constantes inline
@@ -490,8 +491,24 @@ class FacturaExtractorLactalisVentas:
             total_iva = total_sin_iva * (iva_percent / Decimal('100'))
             total_con_iva = total_sin_iva + total_iva
 
-            # Unidad de medida (mapear a estándar REGGIS)
-            unidad_medida = UNIT_MAP.get(unidad_medida_code, unidad_medida_code)
+            # Unidad de medida original (mapear a estándar REGGIS)
+            unidad_original = UNIT_MAP.get(unidad_medida_code, unidad_medida_code)
+
+            cantidad_original = cantidad
+            cantidad_convertida, unidad_destino, factor, ok, error = self._convertir_cantidad_bmc(
+                cantidad_original,
+                unidad_original,
+                nombre_producto
+            )
+
+            if not ok:
+                logger.info(
+                    f"{self.archivo_nombre}: Conversion no aplicada ({error}) - "
+                    f"Producto: {nombre_producto}"
+                )
+
+            cantidad = cantidad_convertida
+            unidad_medida = unidad_destino
 
             # Formatear números al estándar colombiano (coma como separador decimal)
             cantidad_fmt = self._formatear_numero(cantidad)
@@ -499,6 +516,7 @@ class FacturaExtractorLactalisVentas:
             total_sin_iva_fmt = self._formatear_numero(total_sin_iva)
             total_iva_fmt = self._formatear_numero(total_iva)
             total_con_iva_fmt = self._formatear_numero(total_con_iva)
+            cantidad_original_fmt = self._formatear_numero(cantidad_original)
 
             # Construir línea en formato REGGIS
             linea_reggis = {
@@ -521,7 +539,7 @@ class FacturaExtractorLactalisVentas:
                 'activa_factura': LACTALIS_VENTAS_CONFIG['activa_factura'],  # FIJO: "1"
                 'activa_bodega': LACTALIS_VENTAS_CONFIG['activa_bodega'],  # FIJO: "1"
                 'incentivo': '',
-                'cantidad_original': cantidad_fmt,
+                'cantidad_original': cantidad_original_fmt,
                 'moneda': moneda,
                 'total_sin_iva': total_sin_iva_fmt,
                 'total_iva': total_iva_fmt,
@@ -539,17 +557,186 @@ class FacturaExtractorLactalisVentas:
 
     def _extraer_iva_linea(self, line_element) -> Decimal:
         """Extrae el porcentaje de IVA de una línea"""
-        iva_element = line_element.find('.//cac:TaxTotal/cac:TaxSubtotal/cac:TaxCategory/cbc:Percent', NAMESPACES)
-        if iva_element is not None and iva_element.text:
-            return self._parse_decimal(iva_element.text)
+        # Priorizar IVA (TaxScheme ID=01 o Name=IVA) dentro de TaxSubtotal de la linea
+        for tax_subtotal in line_element.findall('.//cac:TaxTotal/cac:TaxSubtotal', NAMESPACES):
+            scheme_id = tax_subtotal.find('.//cac:TaxScheme/cbc:ID', NAMESPACES)
+            scheme_name = tax_subtotal.find('.//cac:TaxScheme/cbc:Name', NAMESPACES)
+            percent = tax_subtotal.find('.//cac:TaxCategory/cbc:Percent', NAMESPACES)
+
+            scheme_id_text = scheme_id.text.strip() if scheme_id is not None and scheme_id.text else ""
+            scheme_name_text = scheme_name.text.strip().upper() if scheme_name is not None and scheme_name.text else ""
+
+            if scheme_id_text == "01" or "IVA" in scheme_name_text:
+                if percent is not None and percent.text:
+                    return self._parse_decimal(percent.text)
+
+        # Si no hay IVA explicito, tomar el primer Percent > 0 en TaxSubtotal
+        for tax_subtotal in line_element.findall('.//cac:TaxTotal/cac:TaxSubtotal', NAMESPACES):
+            percent = tax_subtotal.find('.//cac:TaxCategory/cbc:Percent', NAMESPACES)
+            if percent is not None and percent.text:
+                valor = self._parse_decimal(percent.text)
+                if valor > Decimal('0'):
+                    return valor
 
         # Alternativa: buscar en AllowanceCharge
         iva_element = line_element.find('.//cac:AllowanceCharge/cac:TaxCategory/cbc:Percent', NAMESPACES)
         if iva_element is not None and iva_element.text:
             return self._parse_decimal(iva_element.text)
 
+        # Alternativa: buscar cualquier TaxCategory/Percent dentro de la línea
+        iva_element = line_element.find('.//cac:TaxCategory/cbc:Percent', NAMESPACES)
+        if iva_element is not None and iva_element.text:
+            return self._parse_decimal(iva_element.text)
+
+        # Búsqueda amplia: primer Percent > 0 dentro de la línea
+        for elem in line_element.iter():
+            if elem.tag.endswith('Percent') and elem.text:
+                valor = self._parse_decimal(elem.text)
+                if valor > Decimal('0'):
+                    return valor
+
         # Default: 19% (IVA común en Colombia)
         return Decimal('19')
+
+    def _parse_decimal_texto(self, value: str) -> Optional[Decimal]:
+        """Parsea un numero desde texto, retorna None si no es valido."""
+        try:
+            return Decimal(str(value).replace(',', '.'))
+        except (InvalidOperation, ValueError, AttributeError):
+            return None
+
+    def _detectar_unidades_pack(self, nombre: str) -> int:
+        """Detecta unidades por pack en el nombre del producto."""
+        if 'SIXPACK' in nombre or re.search(r'\bSIX\b', nombre):
+            return 6
+        if 'FOURPACK' in nombre:
+            return 4
+
+        match = re.search(r'\bRISTRA\b.*?(\d+)\s*UND', nombre)
+        if match:
+            return int(match.group(1))
+
+        match = re.search(r'\bDISPLAY\b.*?X\s*(\d+)', nombre)
+        if match:
+            return int(match.group(1))
+
+        match = re.search(r'(?:PQ|PACK)\s*(\d+)', nombre)
+        if match:
+            return int(match.group(1))
+
+        return 1
+
+    def _extraer_volumen_y_pack(self, nombre: str, unidad_original: str) -> Tuple[Optional[Decimal], Optional[str], int]:
+        """Extrae volumen/peso y unidades de pack desde el nombre."""
+        patrones_combinados = [
+            ('Lt', r'(\d+(?:[.,]\d+)?)\s*ML\s*X\s*(\d+)', False),
+            ('Lt', r'(\d+)\s*X\s*(\d+(?:[.,]\d+)?)\s*ML', True),
+            ('Kg', r'(\d+(?:[.,]\d+)?)\s*G[R]?\s*X\s*(\d+)', False),
+            ('Kg', r'(\d+)\s*X\s*(\d+(?:[.,]\d+)?)\s*G[R]?', True),
+            ('Kg', r'(\d+(?:[.,]\d+)?)\s*K[GL]\s*X\s*(\d+)', False),
+            ('Kg', r'(\d+)\s*X\s*(\d+(?:[.,]\d+)?)\s*K[GL]', True),
+            ('Lt', r'(\d+(?:[.,]\d+)?)\s*LITRO[S]?\s*X\s*(\d+)', False),
+            ('Lt', r'(\d+)\s*X\s*(\d+(?:[.,]\d+)?)\s*LITRO[S]?', True),
+        ]
+
+        for unidad, patron, pack_first in patrones_combinados:
+            match = re.search(patron, nombre)
+            if match:
+                if pack_first:
+                    unidades_pack = int(match.group(1))
+                    volumen_raw = self._parse_decimal_texto(match.group(2))
+                else:
+                    volumen_raw = self._parse_decimal_texto(match.group(1))
+                    unidades_pack = int(match.group(2))
+
+                if volumen_raw is None:
+                    continue
+
+                if unidad == 'Lt':
+                    if 'ML' in patron:
+                        volumen = volumen_raw / Decimal('1000')
+                    else:
+                        volumen = volumen_raw
+                else:
+                    if 'G' in patron and 'K' not in patron:
+                        volumen = volumen_raw / Decimal('1000')
+                    else:
+                        volumen = volumen_raw
+
+                return volumen, unidad, unidades_pack
+
+        if unidad_original in ['KG']:
+            patrones = [
+                ('Kg', r'(?:\bX\s*)?(\d+(?:[.,]\d+)?)\s*K[GL]\b'),
+                ('Kg', r'(\d+(?:[.,]\d+)?)\s*G[R]?\b'),
+            ]
+        else:
+            patrones = [
+                ('Lt', r'(?:\bX\s*)?(\d+(?:[.,]\d+)?)\s*ML\b'),
+                ('Kg', r'(?:\bX\s*)?(\d+(?:[.,]\d+)?)\s*K[GL]\b'),
+                ('Kg', r'(\d+(?:[.,]\d+)?)\s*G[R]?\b'),
+                ('Lt', r'(\d+(?:[.,]\d+)?)\s*LITRO[S]?\b'),
+            ]
+
+        unidades_pack = self._detectar_unidades_pack(nombre)
+
+        for unidad, patron in patrones:
+            match = re.search(patron, nombre)
+            if not match:
+                continue
+            valor = self._parse_decimal_texto(match.group(1))
+            if valor is None:
+                continue
+
+            if unidad == 'Lt':
+                volumen = valor / Decimal('1000') if 'ML' in patron else valor
+            else:
+                volumen = valor / Decimal('1000') if 'G' in patron and 'K' not in patron else valor
+
+            return volumen, unidad, unidades_pack
+
+        if unidad_original not in ['KG']:
+            match = re.search(r'(?:\bX\s*)?(\d+(?:[.,]\d+)?)\s*(PARMA|PROLE|LATTI|EDGE|PROL)\b', nombre)
+            if match:
+                valor = self._parse_decimal_texto(match.group(1))
+                if valor is not None:
+                    volumen = valor / Decimal('1000') if valor > 100 else valor
+                    return volumen, 'Lt', unidades_pack
+
+            match = re.search(r'\bX\s*(\d+(?:[.,]\d+)?)\b', nombre)
+            if match:
+                valor = self._parse_decimal_texto(match.group(1))
+                if valor is not None:
+                    volumen = valor / Decimal('1000') if valor > 100 else valor
+                    return volumen, 'Lt', unidades_pack
+
+        return None, None, unidades_pack
+
+    def _detectar_unidad_destino(self, nombre: str, unidad_original: str) -> str:
+        """Determina unidad destino (Lt o Kg) por heuristica."""
+        if any(x in nombre for x in ['CREMA', 'POLVO', 'GR', 'KG', 'KL']):
+            return 'Kg'
+        if any(x in nombre for x in ['LECHE', 'L.', 'UHT', 'ZYMIL']):
+            return 'Lt'
+        if unidad_original in ['KG', 'KGM', 'KG.']:
+            return 'Kg'
+        return 'Lt'
+
+    def _convertir_cantidad_bmc(self, cantidad_original: Decimal, unidad_original: str, nombre_producto: str) -> Tuple[Decimal, str, Decimal, bool, str]:
+        """Convierte la cantidad a Kg o Lt segun el nombre del producto."""
+        nombre = (nombre_producto or '').upper()
+        unidad_orig = (unidad_original or '').upper()
+
+        volumen, unidad_volumen, unidades_pack = self._extraer_volumen_y_pack(nombre, unidad_orig)
+        if volumen is None or unidad_volumen is None:
+            unidad_destino = self._detectar_unidad_destino(nombre, unidad_orig)
+            return cantidad_original, unidad_destino, Decimal('1'), False, 'No se pudo determinar volumen/peso'
+
+        factor = volumen * Decimal(unidades_pack)
+        cantidad_convertida = cantidad_original * factor
+        unidad_destino = unidad_volumen
+
+        return cantidad_convertida, unidad_destino, factor, True, ''
 
     def _parse_decimal(self, value: str) -> Decimal:
         """

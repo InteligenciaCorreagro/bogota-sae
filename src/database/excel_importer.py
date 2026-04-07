@@ -22,12 +22,12 @@ class ExcelImporter:
 
     ENCABEZADOS REQUERIDOS:
     - Materiales: CODIGO, DESCRIPCION, SOCIEDAD
-    - Clientes: Cód.Padre, Nombre Código Padre, NIT
+    - Clientes: Cód.Padre, Nombre Código Padre, NIT, Se Registra
     """
 
     # Encabezados esperados
     MATERIALES_HEADERS = ['CODIGO', 'DESCRIPCION', 'SOCIEDAD']
-    CLIENTES_HEADERS = ['Cód.Padre', 'Nombre Código Padre', 'NIT']
+    CLIENTES_HEADERS = ['Cód.Padre', 'Nombre Código Padre', 'NIT', 'Se Registra']
 
     # Mapeo de variantes de encabezados (normalización)
     MATERIALES_HEADERS_VARIANTS = {
@@ -49,7 +49,11 @@ class ExcelImporter:
         'nombre codigo padre': 'Nombre Código Padre',
         'nombre código padre': 'Nombre Código Padre',
         'nombre': 'Nombre Código Padre',
-        'nit': 'NIT'
+        'nit': 'NIT',
+        'se registra': 'Se Registra',
+        'se_registra': 'Se Registra',
+        'registrar': 'Se Registra',
+        'registro': 'Se Registra'
     }
 
     @staticmethod
@@ -224,6 +228,7 @@ class ExcelImporter:
             idx_cod_padre = headers_normalizados.index('Cód.Padre')
             idx_nombre = headers_normalizados.index('Nombre Código Padre')
             idx_nit = headers_normalizados.index('NIT')
+            idx_se_registra = headers_normalizados.index('Se Registra')
 
             # Leer datos (desde fila 2 en adelante)
             clientes = []
@@ -235,11 +240,13 @@ class ExcelImporter:
                 cod_padre = str(row[idx_cod_padre]).strip() if row[idx_cod_padre] is not None else ''
                 nombre = str(row[idx_nombre]).strip() if row[idx_nombre] is not None else ''
                 nit = str(row[idx_nit]).strip() if row[idx_nit] is not None else ''
+                se_registra = str(row[idx_se_registra]).strip() if row[idx_se_registra] is not None else ''
 
                 cliente = {
                     'cod_padre': cod_padre,
                     'nombre_codigo_padre': nombre,
-                    'nit': nit
+                    'nit': nit,
+                    'se_registra': se_registra
                 }
 
                 # Filtrar filas vacías

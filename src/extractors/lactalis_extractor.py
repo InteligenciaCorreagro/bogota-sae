@@ -65,9 +65,10 @@ class FacturaExtractorLactalis:
                 f"Fecha={fecha_factura}, Moneda={moneda}"
             )
 
-            # Datos del comprador (Lactalis) - VALORES FIJOS
-            nit_comprador = LACTALIS_CONFIG['nit_comprador']
-            nombre_comprador = LACTALIS_CONFIG['nombre_comprador']
+            # Datos del comprador: se extraen del XML para distinguir
+            # correctamente entre Lactalis y Procesadora de Leches.
+            nit_comprador = self._extraer_nit_comprador()
+            nombre_comprador = self._extraer_nombre_comprador()
             municipio = self._extraer_municipio()
 
             # Extraer datos del vendedor (proveedor)
@@ -175,11 +176,25 @@ class FacturaExtractorLactalis:
         return nombre.text.strip() if nombre is not None and nombre.text else ""
 
     def _extraer_municipio(self) -> str:
-        """Extrae el municipio del comprador"""
-        municipio = self.root.find('.//cac:AccountingCustomerParty/cac:Party/cac:PhysicalLocation/cac:Address/cbc:CityName', NAMESPACES)
-        if municipio is None:
-            municipio = self.root.find('.//cac:AccountingCustomerParty/cac:Party/cac:PartyTaxScheme/cac:TaxScheme/cbc:Name', NAMESPACES)
-        return municipio.text.strip() if municipio is not None and municipio.text else ""
+        """Extrae el municipio priorizando comprador y luego proveedor."""
+        rutas = [
+            './/cac:AccountingCustomerParty/cac:Party/cac:PhysicalLocation/cac:Address/cbc:CityName',
+            './/cac:AccountingCustomerParty/cac:Party/cac:PostalAddress/cbc:CityName',
+            './/cac:AccountingSupplierParty/cac:Party/cac:PhysicalLocation/cac:Address/cbc:CityName',
+            './/cac:AccountingSupplierParty/cac:Party/cac:PostalAddress/cbc:CityName',
+        ]
+
+        for ruta in rutas:
+            municipio = self.root.find(ruta, NAMESPACES)
+            if municipio is not None and municipio.text:
+                return municipio.text.strip()
+
+        # Fallback sin namespace para XMLs menos consistentes.
+        for elem in self.root.iter():
+            if elem.tag.endswith('CityName') and elem.text:
+                return elem.text.strip()
+
+        return ""
 
     def _extraer_nit_vendedor(self) -> str:
         """Extrae el NIT del vendedor (proveedor) - busca en múltiples ubicaciones"""
@@ -289,8 +304,8 @@ class FacturaExtractorLactalis:
                 'precio_unitario': precio_unitario_fmt,
                 'fecha_factura': fecha_factura,
                 'fecha_pago': fecha_pago,
-                'nit_comprador': nit_comprador,  # FIJO: NIT de Lactalis
-                'nombre_comprador': nombre_comprador,  # FIJO: "LACTALIS"
+                'nit_comprador': nit_comprador,
+                'nombre_comprador': nombre_comprador,
                 'nit_vendedor': nit_vendedor,  # Puede estar vacío en algunos XMLs
                 'nombre_vendedor': nombre_vendedor,
                 'principal': LACTALIS_CONFIG['principal'],  # FIJO: "C"

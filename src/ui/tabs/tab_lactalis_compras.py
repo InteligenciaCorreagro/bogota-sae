@@ -91,8 +91,8 @@ class TabLactalisCompras(QWidget):
 
         # Información
         info_label = QLabel(
-            "ℹ️ Seleccione la carpeta que contiene los archivos ZIP.\n"
-            "Cada ZIP debe contener un archivo XML (y opcionalmente PDF)."
+            "ℹ️ Seleccione la carpeta que contiene archivos ZIP y/o XML.\n"
+            "Cada ZIP debe contener un archivo XML; los XML sueltos también se procesan."
         )
         info_label.setFont(QFont("Arial", 9))
         info_label.setStyleSheet("color: #34495e; padding: 5px;")
@@ -100,7 +100,7 @@ class TabLactalisCompras(QWidget):
         archivos_layout.addWidget(info_label)
 
         # Botón seleccionar carpeta
-        btn_seleccionar = QPushButton("📂 SELECCIONAR CARPETA CON ARCHIVOS ZIP")
+        btn_seleccionar = QPushButton("📂 SELECCIONAR CARPETA CON ARCHIVOS")
         btn_seleccionar.setMinimumHeight(60)
         btn_seleccionar.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         btn_seleccionar.setStyleSheet("""
@@ -155,7 +155,7 @@ class TabLactalisCompras(QWidget):
 
         # --- Información adicional ---
         info_footer = QLabel(
-            "💡 Los archivos ZIP se procesarán automáticamente (cada ZIP debe contener XML+PDF).\n"
+            "💡 Se procesan ZIP y XML sueltos automáticamente.\n"
             "Los resultados se guardarán en formato Excel REGGIS."
         )
         info_footer.setFont(QFont("Arial", 8))
@@ -167,10 +167,10 @@ class TabLactalisCompras(QWidget):
         self.setLayout(main_layout)
 
     def seleccionar_carpeta(self):
-        """Permite seleccionar una carpeta con archivos ZIP"""
+        """Permite seleccionar una carpeta con archivos ZIP y/o XML"""
         carpeta = QFileDialog.getExistingDirectory(
             self,
-            "Seleccione la carpeta con archivos ZIP de Lactalis Compras",
+            "Seleccione la carpeta con archivos ZIP y/o XML de Lactalis Compras",
             "",
             QFileDialog.Option.ShowDirsOnly
         )
@@ -180,14 +180,16 @@ class TabLactalisCompras(QWidget):
 
         self.carpeta_entrada = Path(carpeta)
 
-        # Buscar archivos ZIP
+        # Buscar archivos ZIP y XML
         zip_files = list(self.carpeta_entrada.glob("*.zip"))
+        xml_files = list(self.carpeta_entrada.glob("*.xml"))
+        total_archivos = len(zip_files) + len(xml_files)
 
-        if not zip_files:
+        if total_archivos == 0:
             QMessageBox.critical(
                 self,
                 "Sin archivos",
-                "No se encontraron archivos ZIP en la carpeta seleccionada"
+                "No se encontraron archivos ZIP ni XML en la carpeta seleccionada"
             )
             return
 
@@ -195,7 +197,10 @@ class TabLactalisCompras(QWidget):
         respuesta = QMessageBox.question(
             self,
             "Confirmar procesamiento",
-            f"Se encontraron {len(zip_files)} archivo(s) ZIP.\n\n"
+            f"Se encontraron:\n"
+            f"  • {len(zip_files)} archivo(s) ZIP\n"
+            f"  • {len(xml_files)} archivo(s) XML\n"
+            f"  • {total_archivos} archivos TOTALES\n\n"
             f"Carpeta: {self.carpeta_entrada.name}\n\n"
             f"Configuración fija: LECHE CRUDA • SPN-1 • Litros • Activa=1\n\n"
             f"¿Procesar ahora?",
@@ -237,7 +242,7 @@ class TabLactalisCompras(QWidget):
     def iniciar_procesamiento(self):
         """Inicia el procesamiento en segundo plano"""
         self.progress.setVisible(True)
-        self.estado_label.setText("⏳ Procesando archivos ZIP de LACTALIS COMPRAS...")
+        self.estado_label.setText("⏳ Procesando archivos de LACTALIS COMPRAS...")
         self.estado_label.setStyleSheet("color: #f39c12; padding: 10px; font-weight: bold;")
 
         # Obtener plantilla

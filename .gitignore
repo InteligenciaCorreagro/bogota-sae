@@ -1,8 +1,10 @@
 # PyInstaller output
 /dist
 *.exe
-# Mantener build/ con configuración pero ignorar outputs
+# Mantener build/ con configuración pero ignorar outputs de PyInstaller local
 /build/installer_output/
+build/build_windows/
+release/
 *.pyc
 
 # Logs

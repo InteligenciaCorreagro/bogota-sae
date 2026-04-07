@@ -11,9 +11,14 @@ import sys
 import logging
 from pathlib import Path
 
-# Agregar el directorio src al path de Python
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
+# Rutas: en ejecutable PyInstaller los módulos viven en sys._MEIPASS, no en ./src
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    _meipass = getattr(sys, "_MEIPASS")
+    if _meipass not in sys.path:
+        sys.path.insert(0, _meipass)
+else:
+    _root = Path(__file__).resolve().parent
+    sys.path.insert(0, str(_root / "src"))
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt

@@ -8,6 +8,8 @@ import zipfile
 import logging
 import openpyxl
 import gc  # Para liberación explícita de memoria
+import re
+import unicodedata
 from pathlib import Path
 from typing import List, Dict, Tuple
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -56,6 +58,10 @@ class ProcesadorLactalisVentas:
         self.database = database
         self.validar_materiales = validar_materiales
         self.validar_clientes = validar_clientes
+        self._materiales_normalizados = None
+
+        if self.database and self.validar_materiales:
+            self._materiales_normalizados = self._cargar_materiales_normalizados()
 
         # Estadísticas
         self.stats = {
@@ -81,6 +87,60 @@ class ProcesadorLactalisVentas:
             except Exception as e:
                 logger.error(f"Error en callback de progreso: {str(e)}")
 
+    def _normalizar_texto(self, texto: str) -> str:
+        """Normaliza texto para comparaciones consistentes (ASCII, mayusculas, sin acentos)."""
+        if not texto:
+            return ""
+        texto = str(texto).upper().strip()
+        texto = unicodedata.normalize("NFKD", texto)
+        texto = "".join(c for c in texto if not unicodedata.combining(c))
+        texto = re.sub(r"[^A-Z0-9 ]+", " ", texto)
+        texto = re.sub(r"\s+", " ", texto).strip()
+        return texto
+
+    def _cargar_materiales_normalizados(self) -> set:
+        """Carga y normaliza descripciones de materiales desde la BD."""
+        if not self.database:
+            return {}
+        try:
+            materiales = self.database.listar_materiales_descripcion_sociedad()
+        except Exception as e:
+            logger.error(f"Error cargando descripciones de materiales: {str(e)}")
+            return {}
+
+        materiales_norm = {}
+        for material in materiales:
+            desc = material.get('descripcion')
+            sociedad = material.get('sociedad', '')
+            desc_norm = self._normalizar_texto(desc)
+            if not desc_norm:
+                continue
+            if desc_norm in materiales_norm and materiales_norm[desc_norm] != sociedad:
+                logger.warning(
+                    f"Descripcion duplicada con sociedad distinta: '{desc}' -> "
+                    f"{materiales_norm[desc_norm]} vs {sociedad}"
+                )
+                if not materiales_norm[desc_norm]:
+                    materiales_norm[desc_norm] = sociedad
+            else:
+                materiales_norm[desc_norm] = sociedad
+
+        logger.info(f"Materiales cargados para validacion por descripcion: {len(materiales_norm)}")
+        return materiales_norm
+
+    def _resolver_vendedor_por_sociedad(self, sociedad_raw: str) -> Tuple[str, str]:
+        """Resuelve NIT y nombre de vendedor segun sociedad del material."""
+        sociedad = str(sociedad_raw).strip()
+        sociedad_norm = self._normalizar_texto(sociedad)
+
+        if sociedad == "890903711" or "PROLECHE" in sociedad_norm:
+            return "890903711", "PROCESADORA DE LECHES S.A. - PROLECHE S.A."
+
+        if sociedad == "800245795" or "PARMALAT" in sociedad_norm or "LACTALIS" in sociedad_norm:
+            return "800245795", "LACTALIS COLOMBIA S.A.S"
+
+        return "800245795", "LACTALIS COLOMBIA S.A.S"
+
     def procesar(self) -> Path:
         """
         Procesa todos los archivos ZIP y XML en la carpeta
@@ -93,6 +153,10 @@ class ProcesadorLactalisVentas:
         logger.info(f"=" * 80)
         logger.info(f"Iniciando procesamiento de LACTALIS VENTAS desde: {self.carpeta_archivos}")
         logger.info(f"=" * 80)
+        logger.info(
+            f"Validaciones configuradas -> materiales={self.validar_materiales}, clientes={self.validar_clientes}, "
+            f"base_datos={'si' if self.database else 'no'}"
+        )
 
         # Buscar archivos ZIP y XML
         archivos_zip = list(self.carpeta_archivos.glob("*.zip"))
@@ -109,11 +173,10 @@ class ProcesadorLactalisVentas:
         # Procesar en lotes CONSERVADORES para evitar crashes
         # Usamos lotes más pequeños para mejor manejo de memoria
         batch_size = min(LACTALIS_VENTAS_CONFIG.get('batch_size', 500), 100)
-        memory_batch_size = 1000  # Escribir a Excel cada 1000 líneas
+        memory_batch_size = 1000  # Para referencia en logs de escritura
 
         todas_lineas = []
         archivos_procesados = 0
-        lineas_escritas = 0
 
         logger.info(f"Procesando en lotes de {batch_size} archivos (prioridad: estabilidad)")
         logger.info(f"Escritura a Excel cada {memory_batch_size} líneas para liberar memoria")
@@ -128,7 +191,8 @@ class ProcesadorLactalisVentas:
                 )
                 
                 lineas = self.procesar_zip(zip_file)
-                todas_lineas.extend(lineas)
+                lineas_validas = self._filtrar_lineas_validas(lineas)
+                todas_lineas.extend(lineas_validas)
                 archivos_procesados += 1
 
                 if lineas:
@@ -142,7 +206,7 @@ class ProcesadorLactalisVentas:
                     gc.collect()  # Forzar garbage collection
                     
             except KeyboardInterrupt:
-                logger.warning("⚠ Procesamiento cancelado por el usuario")
+                logger.warning("Procesamiento cancelado por el usuario")
                 raise
             except Exception as e:
                 # ERROR CRÍTICO - NO CERRAR, solo registrar y continuar
@@ -161,7 +225,8 @@ class ProcesadorLactalisVentas:
                 )
                 
                 lineas = self.procesar_xml(xml_file)
-                todas_lineas.extend(lineas)
+                lineas_validas = self._filtrar_lineas_validas(lineas)
+                todas_lineas.extend(lineas_validas)
                 archivos_procesados += 1
 
                 if lineas:
@@ -175,7 +240,7 @@ class ProcesadorLactalisVentas:
                     gc.collect()  # Forzar garbage collection
                     
             except KeyboardInterrupt:
-                logger.warning("⚠ Procesamiento cancelado por el usuario")
+                logger.warning("Procesamiento cancelado por el usuario")
                 raise
             except Exception as e:
                 # ERROR CRÍTICO - NO CERRAR, solo registrar y continuar
@@ -190,27 +255,8 @@ class ProcesadorLactalisVentas:
         logger.info("Liberando memoria después de procesar archivos...")
         gc.collect()
 
-        # Aplicar validaciones de base de datos si están habilitadas
-        self._reportar_progreso(
-            total_archivos,
-            total_archivos,
-            f"Aplicando validaciones a {len(todas_lineas)} líneas..."
-        )
-
-        lineas_antes_validacion = len(todas_lineas)
-        todas_lineas = self._filtrar_lineas_validas(todas_lineas)
+        # Registrar conteo final de líneas válidas (ya filtradas durante el procesamiento)
         self.stats['lineas_validas'] = len(todas_lineas)
-
-        if self.database and (self.validar_materiales or self.validar_clientes):
-            logger.info(
-                f"Validación BD: {lineas_antes_validacion} líneas -> "
-                f"{len(todas_lineas)} válidas, "
-                f"{lineas_antes_validacion - len(todas_lineas)} rechazadas"
-            )
-
-        # Liberar memoria después de validaciones
-        logger.info("Liberando memoria después de validaciones...")
-        gc.collect()
 
         # Mostrar estadísticas
         self._mostrar_estadisticas()
@@ -508,30 +554,28 @@ class ProcesadorLactalisVentas:
 
         # Validar material
         if self.validar_materiales:
-            codigo = linea.get('codigo_subyacente', '')
-            nombre_producto = linea.get('nombre_producto', '').upper()
+            if self._materiales_normalizados is None:
+                self._materiales_normalizados = self._cargar_materiales_normalizados()
 
-            # Determinar sociedad según el nombre del producto
-            # IMPORTANTE: Solo aceptamos Parmalat (Lactalis) o Proleche
-            # Cualquier otro producto (ej: President) se rechaza directamente
+            nombre_producto = linea.get('nombre_producto', '')
+            nombre_normalizado = self._normalizar_texto(nombre_producto)
 
-            if 'PARMALAT' in nombre_producto or 'LACTALIS' in nombre_producto:
-                sociedad = '800245795'  # Lactalis
-            elif 'PROLECHE' in nombre_producto:
-                sociedad = '890903711'  # Proleche
-            else:
-                # Si no es ni Parmalat ni Proleche → RECHAZAR DIRECTAMENTE
-                mensaje = f"Producto no permitido: {nombre_producto} (solo Parmalat/Lactalis o Proleche)"
-                logger.info(f"❌ RECHAZADO - {mensaje}")  # Cambiado a INFO para que sea visible
+            if not nombre_normalizado:
+                mensaje = "Nombre de producto vacio o invalido"
+                logger.info(f"RECHAZADO - {mensaje}")
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje
 
-            # Ahora verificar si existe en la base de datos
-            if not self.database.validar_material(codigo, sociedad):
-                mensaje = f"Material no existe en BD: código={codigo}, sociedad={sociedad}, producto={nombre_producto}"
-                logger.info(f"❌ RECHAZADO - {mensaje}")  # Cambiado a INFO para que sea visible
+            if nombre_normalizado not in self._materiales_normalizados:
+                mensaje = f"Material no existe en BD por descripcion: {nombre_producto}"
+                logger.info(f"RECHAZADO - {mensaje}")
                 self.stats['materiales_invalidos'] += 1
                 return False, mensaje
+
+            sociedad = self._materiales_normalizados.get(nombre_normalizado, "")
+            nit_vendedor, nombre_vendedor = self._resolver_vendedor_por_sociedad(sociedad)
+            linea['nit_vendedor'] = nit_vendedor
+            linea['nombre_vendedor'] = nombre_vendedor
 
         # Validar cliente
         if self.validar_clientes:
@@ -539,7 +583,7 @@ class ProcesadorLactalisVentas:
 
             if not self.database.validar_cliente(nit_comprador):
                 mensaje = f"Cliente no existe en BD: NIT={nit_comprador}"
-                logger.info(f"❌ RECHAZADO - {mensaje}")  # Cambiado a INFO para que sea visible
+                logger.info(f"RECHAZADO - {mensaje}")
                 self.stats['clientes_invalidos'] += 1
                 return False, mensaje
 
@@ -645,7 +689,7 @@ class ProcesadorLactalisVentas:
                 porcentaje = int(((linea_num + 1) / total_lineas) * 100)
                 logger.debug(f"Escritura Excel: {linea_num + 1}/{total_lineas} líneas ({porcentaje}%)")
 
-        logger.info(f"✅ {total_lineas} líneas escritas a Excel")
+        logger.info(f"OK - {total_lineas} lineas escritas a Excel")
 
         # Generar nombre de archivo de salida con timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

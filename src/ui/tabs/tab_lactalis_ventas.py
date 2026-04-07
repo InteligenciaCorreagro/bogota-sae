@@ -12,7 +12,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QPushButton, QProgressBar, QFileDialog,
-                              QMessageBox, QGroupBox, QTextEdit, QCheckBox)
+                              QMessageBox, QGroupBox, QTextEdit, QCheckBox,
+                              QScrollArea)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
@@ -76,7 +77,16 @@ class TabLactalisVentas(QWidget):
 
     def setup_ui(self):
         """Configura la interfaz del tab"""
-        # Layout principal
+        # Layout principal con scroll para evitar cortes
+        root_layout = QVBoxLayout()
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content_widget = QWidget()
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
@@ -166,7 +176,7 @@ class TabLactalisVentas(QWidget):
         # Nota sobre formato
         formato_note = QLabel(
             "💡 Materiales: CODIGO, DESCRIPCION, SOCIEDAD (usar: 'Parmalat' o 'Proleche')\n"
-            "💡 Clientes: Cód.Padre, Nombre Código Padre, NIT (si dice 'no nit' no se registra)"
+            "💡 Clientes: Cód.Padre, Nombre Código Padre, NIT, Se Registra (NIT o NO NIT)"
         )
         formato_note.setFont(QFont("Arial", 8))
         formato_note.setStyleSheet("color: #7f8c8d; padding: 5px;")
@@ -179,13 +189,13 @@ class TabLactalisVentas(QWidget):
         self.checkbox_validar_materiales = QCheckBox("✓ Validar materiales contra BD (activar solo si importaste materiales)")
         self.checkbox_validar_materiales.setFont(QFont("Arial", 9))
         self.checkbox_validar_materiales.setStyleSheet("color: #2c3e50;")
-        self.checkbox_validar_materiales.setChecked(False)  # Desactivado por defecto
+        self.checkbox_validar_materiales.setChecked(True)  # Activado por defecto para forzar validación
         validaciones_layout.addWidget(self.checkbox_validar_materiales)
 
         self.checkbox_validar_clientes = QCheckBox("✓ Validar clientes contra BD (activar solo si importaste clientes)")
         self.checkbox_validar_clientes.setFont(QFont("Arial", 9))
         self.checkbox_validar_clientes.setStyleSheet("color: #2c3e50;")
-        self.checkbox_validar_clientes.setChecked(False)  # Desactivado por defecto
+        self.checkbox_validar_clientes.setChecked(True)  # Activado por defecto para forzar validación
         validaciones_layout.addWidget(self.checkbox_validar_clientes)
 
         db_layout.addLayout(validaciones_layout)
@@ -316,7 +326,11 @@ class TabLactalisVentas(QWidget):
         info_footer.setWordWrap(True)
         main_layout.addWidget(info_footer)
 
-        self.setLayout(main_layout)
+        content_widget.setLayout(main_layout)
+        scroll_area.setWidget(content_widget)
+        root_layout.addWidget(scroll_area)
+
+        self.setLayout(root_layout)
 
     def _inicializar_db_si_necesario(self) -> bool:
         """
@@ -335,7 +349,7 @@ class TabLactalisVentas(QWidget):
         try:
             logger.info("Inicializando base de datos de forma lazy...")
             self.db = LactalisDatabase()
-            logger.info("✅ Base de datos inicializada correctamente")
+            logger.info("Base de datos inicializada correctamente")
 
             # Actualizar label de info
             try:
@@ -350,7 +364,7 @@ class TabLactalisVentas(QWidget):
             return True
 
         except Exception as e:
-            logger.error(f"❌ ERROR al inicializar base de datos: {str(e)}", exc_info=True)
+            logger.error(f"Error al inicializar base de datos: {str(e)}", exc_info=True)
             self.db_error = str(e)
             self.db = None
 
@@ -474,6 +488,13 @@ class TabLactalisVentas(QWidget):
         validar_materiales = self.checkbox_validar_materiales.isChecked()
         validar_clientes = self.checkbox_validar_clientes.isChecked()
 
+        logger.info(
+            f"Validaciones Lactalis Ventas -> materiales={validar_materiales}, clientes={validar_clientes}"
+        )
+        self.agregar_log(
+            f"Validaciones activas -> Materiales: {'Sí' if validar_materiales else 'No'} | Clientes: {'Sí' if validar_clientes else 'No'}"
+        )
+
         # Si se requieren validaciones, inicializar BD
         if validar_materiales or validar_clientes:
             self.agregar_log("Inicializando base de datos para validaciones...")
@@ -533,12 +554,15 @@ class TabLactalisVentas(QWidget):
                         return
                 else:
                     self.agregar_log(f"✅ BD tiene {num_materiales} materiales y {num_clientes} clientes")
+        else:
+            logger.info("Validaciones desactivadas para Lactalis Ventas (no se consultará BD)")
+            self.agregar_log("⚠️ Validaciones desactivadas: no se consultará la base de datos")
 
         # Crear procesador con callback de progreso y validaciones
         procesador = ProcesadorLactalisVentas(
             self.carpeta_entrada,
             plantilla,
-            progress_callback=self.actualizar_progreso,
+            progress_callback=None,
             database=self.db if (validar_materiales or validar_clientes) else None,
             validar_materiales=validar_materiales,
             validar_clientes=validar_clientes
@@ -546,6 +570,8 @@ class TabLactalisVentas(QWidget):
 
         # Iniciar thread de procesamiento
         self.procesamiento_thread = ProcesamientoThread(procesador.procesar)
+        self.procesamiento_thread.progress.connect(self.actualizar_progreso)
+        procesador.progress_callback = self.procesamiento_thread.progress.emit
         self.procesamiento_thread.finished.connect(self.procesamiento_finalizado)
         self.procesamiento_thread.start()
 
@@ -705,7 +731,7 @@ class TabLactalisVentas(QWidget):
                     self,
                     "Formato inválido",
                     f"El archivo no tiene el formato correcto:\n\n{mensaje}\n\n"
-                    f"Se esperan los encabezados: Cód.Padre, Nombre Código Padre, NIT"
+                    f"Se esperan los encabezados: Cód.Padre, Nombre Código Padre, NIT, Se Registra"
                 )
                 return
 
@@ -738,7 +764,7 @@ class TabLactalisVentas(QWidget):
                 f"⊙ Ya existentes: {existentes}\n"
                 f"✗ Errores/rechazados: {errores}\n\n"
                 f"Total en BD: {self.db.contar_clientes()}\n\n"
-                f"Nota: Los clientes con 'no nit' no se registran"
+                f"Nota: Los clientes con 'Se Registra' = NO NIT no se validan"
             )
 
         except ExcelImporterError as e:

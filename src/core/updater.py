@@ -20,6 +20,14 @@ from .version import __version__, VERSION_INFO
 
 logger = logging.getLogger(__name__)
 
+UPDATE_USER_AGENT = "BogotaSAE-Updater/2.0 (Windows; +https://github.com/InteligenciaCorreagro/bogota-sae)"
+
+
+def _urlopen_request(url: str, timeout: int = 15):
+    """Request con User-Agent (GitHub raw/releases suele exigirlo)."""
+    req = urllib.request.Request(url, headers={"User-Agent": UPDATE_USER_AGENT})
+    return urllib.request.urlopen(req, timeout=timeout)
+
 
 class DownloadThread(QThread):
     """Thread para descargar actualizaciones en segundo plano"""
@@ -34,15 +42,23 @@ class DownloadThread(QThread):
     def run(self):
         """Descarga el archivo mostrando progreso"""
         try:
-            # Crear carpeta temporal si no existe
             self.destination.parent.mkdir(parents=True, exist_ok=True)
-
-            # Descargar con progreso
-            def report_progress(block_num, block_size, total_size):
-                downloaded = block_num * block_size
-                self.progress.emit(downloaded, total_size)
-
-            urllib.request.urlretrieve(self.url, self.destination, reporthook=report_progress)
+            req = urllib.request.Request(self.url, headers={"User-Agent": UPDATE_USER_AGENT})
+            with urllib.request.urlopen(req, timeout=300) as response:
+                total_size = int(response.headers.get("Content-Length") or 0)
+                block_size = 65536
+                downloaded = 0
+                with open(self.destination, "wb") as out:
+                    while True:
+                        chunk = response.read(block_size)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            self.progress.emit(downloaded, total_size)
+                        else:
+                            self.progress.emit(downloaded, max(downloaded, 1))
             self.finished.emit(True, str(self.destination))
 
         except Exception as e:
@@ -88,7 +104,7 @@ class Updater:
 
         try:
             # Descargar información de versión remota
-            with urllib.request.urlopen(self.update_check_url, timeout=10) as response:
+            with _urlopen_request(self.update_check_url, timeout=15) as response:
                 version_data = json.loads(response.read().decode('utf-8'))
 
             remote_version = version_data.get('version', '0.0.0')
@@ -105,8 +121,8 @@ class Updater:
                 if show_message_if_no_update and self.parent:
                     QMessageBox.information(
                         self.parent,
-                        "Sin actualizaciones",
-                        f"Estás usando la versión más reciente ({self.current_version})"
+                        "Versión actualizada",
+                        f"Ya tienes la última versión disponible ({self.current_version})."
                     )
                 return None
 
@@ -141,18 +157,22 @@ class Updater:
         Returns:
             True si la versión remota es más nueva
         """
+        def parse(ver: str) -> list:
+            parts = []
+            for p in ver.strip().split('.'):
+                try:
+                    parts.append(int(p))
+                except ValueError:
+                    parts.append(0)
+            return parts
+
         try:
-            remote_parts = [int(x) for x in remote.split('.')]
-            current_parts = [int(x) for x in current.split('.')]
-
-            # Comparar parte por parte (major, minor, patch)
-            for r, c in zip(remote_parts, current_parts):
-                if r > c:
-                    return True
-                elif r < c:
-                    return False
-
-            return False
+            r = parse(remote)
+            c = parse(current)
+            n = max(len(r), len(c))
+            r = r + [0] * (n - len(r))
+            c = c + [0] * (n - len(c))
+            return r > c
 
         except Exception as e:
             logger.error(f"Error comparando versiones: {str(e)}")
@@ -304,8 +324,23 @@ class Updater:
             try:
                 # Ejecutar instalador
                 if sys.platform == 'win32':
-                    # Windows: ejecutar .exe
-                    subprocess.Popen([str(installer_path)])
+                    # Inno Setup: cerrar instancia en ejecución y evitar choques comunes
+                    exe_lower = str(installer_path).lower()
+                    if exe_lower.endswith('.exe'):
+                        # Inno Setup: instalación con barra de progreso y cierre de la app en uso
+                        args = [
+                            str(installer_path),
+                            '/CLOSEAPPLICATIONS',
+                            '/SP-',
+                            '/SILENT',
+                        ]
+                    else:
+                        args = [str(installer_path)]
+                    subprocess.Popen(
+                        args,
+                        close_fds=False,
+                        cwd=str(installer_path.parent),
+                    )
                 else:
                     # Linux/Mac: abrir en gestor de archivos
                     subprocess.Popen(['xdg-open', str(installer_path)])

@@ -30,15 +30,9 @@ class LactalisDatabase:
         """
         try:
             if db_path is None:
-                # Determinar la ruta por defecto según el sistema operativo
-                if os.name == 'nt':  # Windows
-                    app_data = os.getenv('APPDATA')
-                    if app_data:
-                        base_dir = Path(app_data) / 'BogotaSAE' / 'database'
-                    else:
-                        base_dir = Path.cwd() / 'database'
-                else:  # Linux/Mac
-                    base_dir = Path.cwd() / 'database'
+                # Guardar la BD dentro del proyecto (./database/)
+                project_root = Path(__file__).resolve().parents[2]
+                base_dir = project_root / 'database'
 
                 logger.info(f"Creando directorio de base de datos: {base_dir}")
                 base_dir.mkdir(parents=True, exist_ok=True)
@@ -50,6 +44,7 @@ class LactalisDatabase:
             self.conn = None
             self._conectar()
             self._crear_tablas()
+            self._asegurar_columna_se_registra()
 
             logger.info("Base de datos inicializada correctamente")
         except Exception as e:
@@ -59,7 +54,7 @@ class LactalisDatabase:
     def _conectar(self):
         """Conecta a la base de datos SQLite"""
         try:
-            self.conn = sqlite3.connect(self.db_path)
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
             logger.info(f"Conectado a base de datos: {self.db_path}")
         except Exception as e:
@@ -96,6 +91,7 @@ class LactalisDatabase:
                     cod_padre TEXT NOT NULL,
                     nombre_codigo_padre TEXT NOT NULL,
                     nit TEXT,
+                    se_registra TEXT DEFAULT 'NIT',
                     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(cod_padre)
                 )
@@ -112,6 +108,21 @@ class LactalisDatabase:
 
         except Exception as e:
             logger.error(f"Error creando tablas: {str(e)}")
+            raise
+
+    def _asegurar_columna_se_registra(self):
+        """Asegura que la columna se_registra exista en la tabla clientes."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("PRAGMA table_info(clientes)")
+            columnas = [row['name'] for row in cursor.fetchall()]
+            if 'se_registra' not in columnas:
+                logger.info("Agregando columna se_registra a tabla clientes")
+                cursor.execute("ALTER TABLE clientes ADD COLUMN se_registra TEXT DEFAULT 'NIT'")
+                cursor.execute("UPDATE clientes SET se_registra = 'NIT' WHERE se_registra IS NULL OR TRIM(se_registra) = ''")
+                self.conn.commit()
+        except Exception as e:
+            logger.error(f"Error asegurando columna se_registra: {str(e)}")
             raise
 
     # ==================== MÉTODOS PARA MATERIALES ====================
@@ -262,7 +273,54 @@ class LactalisDatabase:
             logger.error(f"Error listando materiales: {str(e)}")
             return []
 
+    def listar_descripciones_materiales(self) -> List[str]:
+        """
+        Lista todas las descripciones de materiales para validaciones por nombre
+
+        Returns:
+            Lista de descripciones de materiales
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT descripcion
+                FROM materiales
+            """)
+            return [row['descripcion'] for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error listando descripciones de materiales: {str(e)}")
+            return []
+
+    def listar_materiales_descripcion_sociedad(self) -> List[Dict]:
+        """
+        Lista descripciones de materiales con sociedad asociada
+
+        Returns:
+            Lista de dicts con descripcion y sociedad
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT descripcion, sociedad
+                FROM materiales
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error listando materiales con sociedad: {str(e)}")
+            return []
+
     # ==================== MÉTODOS PARA CLIENTES ====================
+
+    def _normalizar_se_registra(self, valor: str) -> str:
+        """Normaliza el valor de 'Se Registra' a 'NIT' o 'NO NIT'."""
+        val = str(valor).strip().upper()
+        if not val:
+            return 'NIT'
+        if val in ['NIT', 'SI', 'S', 'YES', 'Y']:
+            return 'NIT'
+        if val in ['NO NIT', 'NONIT', 'NO', 'NO REGISTRA', 'NO REGISTRAR', 'NO REGISTRADO']:
+            return 'NO NIT'
+        return val
 
     def importar_clientes(self, clientes: List[Dict]) -> Tuple[int, int, int]:
         """
@@ -288,6 +346,7 @@ class LactalisDatabase:
                 cod_padre = str(cliente.get('cod_padre', '')).strip()
                 nombre = str(cliente.get('nombre_codigo_padre', '')).strip()
                 nit = str(cliente.get('nit', '')).strip()
+                se_registra_raw = str(cliente.get('se_registra', '')).strip()
 
                 # Validar campos requeridos
                 if not cod_padre or not nombre:
@@ -295,11 +354,14 @@ class LactalisDatabase:
                     errores += 1
                     continue
 
-                # REGLA ESPECIAL: Si dice "no nit", no registrar
-                if nit.lower() in ['no nit', 'nonit', 'sin nit']:
-                    logger.info(f"Cliente {cod_padre} no registrado (NIT: {nit})")
-                    errores += 1
-                    continue
+                se_registra = self._normalizar_se_registra(se_registra_raw)
+
+                # Si no hay valor en Se Registra, aplicar regla heredada por NIT
+                if not se_registra_raw:
+                    if nit.lower() in ['no nit', 'nonit', 'sin nit']:
+                        se_registra = 'NO NIT'
+                    else:
+                        se_registra = 'NIT'
 
                 # Validar que si tiene NIT, sea válido (no vacío)
                 nit_final = nit if nit and nit.lower() != 'nit' else None
@@ -312,13 +374,18 @@ class LactalisDatabase:
 
                 if cursor.fetchone():
                     existentes += 1
-                    logger.debug(f"Cliente ya existe: {cod_padre}")
+                    cursor.execute("""
+                        UPDATE clientes
+                        SET nombre_codigo_padre = ?, nit = ?, se_registra = ?
+                        WHERE cod_padre = ?
+                    """, (nombre, nit_final, se_registra, cod_padre))
+                    logger.debug(f"Cliente actualizado: {cod_padre}")
                 else:
                     # Insertar nuevo cliente
                     cursor.execute("""
-                        INSERT INTO clientes (cod_padre, nombre_codigo_padre, nit)
-                        VALUES (?, ?, ?)
-                    """, (cod_padre, nombre, nit_final))
+                        INSERT INTO clientes (cod_padre, nombre_codigo_padre, nit, se_registra)
+                        VALUES (?, ?, ?, ?)
+                    """, (cod_padre, nombre, nit_final, se_registra))
                     nuevos += 1
                     logger.debug(f"Cliente insertado: {cod_padre} - {nombre}")
 
@@ -345,7 +412,7 @@ class LactalisDatabase:
             cursor = self.conn.cursor()
             cursor.execute("""
                 SELECT id FROM clientes
-                WHERE nit = ?
+                WHERE nit = ? AND TRIM(UPPER(COALESCE(se_registra, 'NIT'))) = 'NIT'
             """, (nit.strip(),))
 
             return cursor.fetchone() is not None

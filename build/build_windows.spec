@@ -17,7 +17,25 @@ from pathlib import Path
 project_root = Path(SPECPATH).parent
 src_path = project_root / 'src'
 
+# Imports mixtos: `config.*` con src/ en el path y `src.*` con la raíz del proyecto en el path.
+for _p in (str(project_root), str(src_path)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from PyInstaller.utils.hooks import collect_submodules
+
+def _subs(mod):
+    try:
+        return collect_submodules(mod)
+    except Exception:
+        return []
+
 block_cipher = None
+
+_hidden_pkgs = _subs('src')
+for _pkg in ('config', 'core', 'ui', 'extractors', 'processors', 'database', 'utils'):
+    _hidden_pkgs += _subs(_pkg)
+_hidden_pkgs = list(dict.fromkeys(_hidden_pkgs))
 
 # Análisis de archivos y dependencias
 a = Analysis(
@@ -28,7 +46,7 @@ a = Analysis(
         # Incluir plantilla Excel si existe
         (str(project_root / 'Plantilla_REGGIS.xlsx'), '.') if (project_root / 'Plantilla_REGGIS.xlsx').exists() else None,
     ],
-    hiddenimports=[
+    hiddenimports=list(dict.fromkeys([
         # Imports que PyInstaller podría no detectar automáticamente
         'openpyxl',
         'openpyxl.cell._writer',
@@ -36,7 +54,9 @@ a = Analysis(
         'PyQt6.QtCore',
         'PyQt6.QtWidgets',
         'PyQt6.QtGui',
-    ],
+        'config.logging_config',
+        'config.constants',
+    ] + _hidden_pkgs)),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

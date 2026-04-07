@@ -8,7 +8,7 @@ import logging
 from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QWidget, QVBoxLayout,
                               QMenuBar, QMenu, QMessageBox, QApplication,
                               QStatusBar, QLabel, QHBoxLayout)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QEvent
 from PyQt6.QtGui import QFont, QAction, QIcon
 
 from core.version import __version__, APP_NAME, get_version_string
@@ -249,6 +249,15 @@ class MainWindow(QMainWindow):
         center_point = screen.center()
         window_geo.moveCenter(center_point)
         self.move(window_geo.topLeft())
+
+    def changeEvent(self, event):
+        """Registra cambios de estado de la ventana (minimizar/restaurar)."""
+        if event.type() == QEvent.Type.WindowStateChange:
+            if self.isMinimized():
+                logger.info("Ventana minimizada por el usuario")
+            else:
+                logger.info("Ventana restaurada por el usuario")
+        super().changeEvent(event)
 
     # --- Slots de acciones del menú ---
 
